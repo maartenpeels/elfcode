@@ -6,4 +6,4 @@ This crate is an implementation detail. Use [`elfcode`](https://crates.io/crates
 
 ## License
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.
+Licensed under [MIT license](LICENSE-MIT).
