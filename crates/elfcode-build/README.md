@@ -13,4 +13,4 @@ See the [elfcode README](https://github.com/maartenpeels/elfcode#readme) for the
 
 ## License
 
-Licensed under [MIT license](LICENSE-MIT).
+Licensed under [MIT license](LICENSE).

@@ -165,4 +165,4 @@ Keep `cargo-elfcode`, `elfcode` and `elfcode-build` on the same version. They ta
 
 ## License
 
-Licensed under [MIT license](LICENSE-MIT).
+Licensed under [MIT license](LICENSE).
