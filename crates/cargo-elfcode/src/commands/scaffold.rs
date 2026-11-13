@@ -8,7 +8,7 @@ use jiff::civil::Date;
 use thiserror::Error;
 
 use crate::cli::{ResolveError, ScaffoldArgs};
-use crate::data::PuzzleData;
+use crate::data::{DataError, PuzzleData};
 use crate::project::Project;
 use crate::site::Site;
 
@@ -32,8 +32,6 @@ enum Outcome {
     Created,
     AlreadyThere,
     Downloaded,
-    /// The input is optional here: `run` downloads it later. Scaffolding
-    /// ahead of the unlock is the common case.
     NotDownloaded(String),
 }
 
@@ -49,12 +47,14 @@ pub fn execute(
 
     let source = layout::source_file(puzzle);
     let examples = layout::examples_file(puzzle);
+    let text = layout::puzzle_file(puzzle);
     let input = layout::input_file(puzzle);
 
     let files = [
         (create(project, &source, &day_source(puzzle))?, source),
         (create(project, &examples, EXAMPLES_TEMPLATE)?, examples),
-        (fetch_input(data, puzzle, &input), input),
+        (download(data, &text, |data| data.puzzle_text(puzzle)), text),
+        (download(data, &input, |data| data.input(puzzle)), input),
     ];
 
     Ok(render(puzzle, &files))
@@ -82,12 +82,18 @@ fn create(project: &Project, file: &Utf8Path, contents: &str) -> Result<Outcome,
     }
 }
 
-fn fetch_input(data: &PuzzleData<'_, impl Site>, puzzle: PuzzleId, file: &Utf8Path) -> Outcome {
+/// The downloads are optional here: `run` fetches the input later anyway,
+/// and scaffolding ahead of the unlock is the common case.
+fn download<'d, S: Site>(
+    data: &'d PuzzleData<'d, S>,
+    file: &Utf8Path,
+    fetch: impl FnOnce(&'d PuzzleData<'d, S>) -> Result<Utf8PathBuf, DataError>,
+) -> Outcome {
     if data.project().path(file).is_file() {
         return Outcome::AlreadyThere;
     }
 
-    match data.input(puzzle) {
+    match fetch(data) {
         Ok(_) => Outcome::Downloaded,
         Err(error) => Outcome::NotDownloaded(format!("{:#}", anyhow::Error::new(error))),
     }
@@ -151,8 +157,14 @@ mod tests {
 2026 · day 03
   src/y2026/day03.rs          created
   data/2026/03/examples.toml  created
+  data/2026/03/puzzle.md      downloaded
   data/2026/03/input.txt      downloaded
 "
+        );
+        assert!(
+            scratch
+                .read("data/2026/03/puzzle.md")
+                .contains("## --- Day 3: Test ---")
         );
         assert!(
             scratch
@@ -176,17 +188,19 @@ mod tests {
         let scratch = Scratch::logged_in();
         scratch.write("src/y2026/day03.rs", "// my solution\n");
         scratch.write("data/2026/03/examples.toml", "# my examples\n");
+        scratch.write("data/2026/03/puzzle.md", "my notes\n");
         scratch.write("data/2026/03/input.txt", "my input\n");
 
         let output = execute(&args(3, 2026), &scratch.data(), IN_DECEMBER_2026).unwrap();
 
-        assert_eq!(output.matches("already there").count(), 3, "{output}");
+        assert_eq!(output.matches("already there").count(), 4, "{output}");
         assert_eq!(scratch.read("src/y2026/day03.rs"), "// my solution\n");
         assert_eq!(
             scratch.read("data/2026/03/examples.toml"),
             "# my examples\n"
         );
         assert_eq!(scratch.site.downloads.get(), 0);
+        assert_eq!(scratch.site.page_requests.get(), 0);
     }
 
     #[test]

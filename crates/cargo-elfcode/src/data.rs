@@ -8,8 +8,9 @@ use thiserror::Error;
 use crate::event;
 use crate::gitignore;
 use crate::project::Project;
-use crate::session::{SessionStore, StoreError};
-use crate::site::{Site, SiteError};
+use crate::puzzle_page::{self, NoDescription};
+use crate::session::{Session, SessionStore, StoreError};
+use crate::site::{self, Site, SiteError};
 
 /// The puzzle files of a project, downloaded on first use and then served
 /// from disk forever: the site asks never to fetch the same thing twice.
@@ -37,6 +38,8 @@ pub enum DataError {
     Session(#[from] StoreError),
     #[error(transparent)]
     Site(#[from] SiteError),
+    #[error(transparent)]
+    NoDescription(#[from] NoDescription),
     #[error("could not write {path}")]
     Write {
         path: Utf8PathBuf,
@@ -62,7 +65,29 @@ impl<'a, S: Site> PuzzleData<'a, S> {
     /// on disk yet. A cached input needs neither network nor login.
     pub fn input(&self, puzzle: PuzzleId) -> Result<Utf8PathBuf, DataError> {
         let file = layout::input_file(puzzle);
-        let path = self.project.path(&file);
+        self.cached_or_download(puzzle, &file, |session| {
+            let session = session.ok_or_else(|| DataError::NotLoggedIn { file: file.clone() })?;
+            Ok(self.site.input(&session, puzzle)?)
+        })
+    }
+
+    /// The absolute path of the puzzle text as markdown, downloading it when
+    /// it is not on disk yet. Without a login the site shows part 1 only.
+    pub fn puzzle_text(&self, puzzle: PuzzleId) -> Result<Utf8PathBuf, DataError> {
+        let file = layout::puzzle_file(puzzle);
+        self.cached_or_download(puzzle, &file, |session| {
+            let page = self.site.puzzle_page(session.as_ref(), puzzle)?;
+            Ok(puzzle_page::to_markdown(&page, &site::puzzle_url(puzzle))?)
+        })
+    }
+
+    fn cached_or_download(
+        &self,
+        puzzle: PuzzleId,
+        file: &Utf8Path,
+        download: impl FnOnce(Option<Session>) -> Result<String, DataError>,
+    ) -> Result<Utf8PathBuf, DataError> {
+        let path = self.project.path(file);
         if path.is_file() {
             return Ok(path);
         }
@@ -75,13 +100,12 @@ impl<'a, S: Site> PuzzleData<'a, S> {
             });
         }
 
-        let Some(session) = self.sessions.load()? else {
-            return Err(DataError::NotLoggedIn { file });
-        };
-        let input = self.site.input(&session, puzzle)?;
-
-        self.save(&file, &input)
-            .map_err(|source| DataError::Write { path: file, source })?;
+        let contents = download(self.sessions.load()?)?;
+        self.save(file, &contents)
+            .map_err(|source| DataError::Write {
+                path: file.to_owned(),
+                source,
+            })?;
         Ok(path)
     }
 
@@ -106,16 +130,20 @@ pub mod testing {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::session::Session;
 
-    /// Serves the same input for every puzzle and counts the downloads.
+    /// Serves the same input and puzzle page for every puzzle and counts
+    /// the downloads.
     #[derive(Default)]
     pub struct FakeSite {
         pub downloads: Cell<usize>,
+        pub page_requests: Cell<usize>,
+        pub page_sessions: Cell<usize>,
     }
 
     impl FakeSite {
         pub const INPUT: &str = "a\nb\nc\n";
+        pub const PAGE: &str =
+            r#"<article class="day-desc"><h2>--- Day 3: Test ---</h2><p>Count.</p></article>"#;
     }
 
     impl Site for FakeSite {
@@ -126,6 +154,18 @@ pub mod testing {
         fn input(&self, _session: &Session, _puzzle: PuzzleId) -> Result<String, SiteError> {
             self.downloads.set(self.downloads.get() + 1);
             Ok(Self::INPUT.to_owned())
+        }
+
+        fn puzzle_page(
+            &self,
+            session: Option<&Session>,
+            _puzzle: PuzzleId,
+        ) -> Result<String, SiteError> {
+            self.page_requests.set(self.page_requests.get() + 1);
+            if session.is_some() {
+                self.page_sessions.set(self.page_sessions.get() + 1);
+            }
+            Ok(Self::PAGE.to_owned())
         }
     }
 
@@ -262,6 +302,41 @@ mod tests {
             .unwrap();
 
         assert_eq!(scratch.site.downloads.get(), 1);
+    }
+
+    #[test]
+    fn converts_the_puzzle_page_to_markdown() {
+        let scratch = Scratch::logged_in();
+
+        let path = scratch.data().puzzle_text(puzzle()).unwrap();
+
+        assert_eq!(path, scratch.project.path("data/2026/03/puzzle.md"));
+        assert!(
+            scratch
+                .read("data/2026/03/puzzle.md")
+                .ends_with("\n\n## --- Day 3: Test ---\n\nCount.\n")
+        );
+        assert_eq!(scratch.site.page_sessions.get(), 1);
+    }
+
+    #[test]
+    fn fetches_the_puzzle_text_without_a_login() {
+        let scratch = Scratch::logged_out();
+
+        scratch.data().puzzle_text(puzzle()).unwrap();
+
+        assert_eq!(scratch.site.page_requests.get(), 1);
+        assert_eq!(scratch.site.page_sessions.get(), 0);
+    }
+
+    #[test]
+    fn never_fetches_the_puzzle_text_twice() {
+        let scratch = Scratch::logged_in();
+
+        scratch.data().puzzle_text(puzzle()).unwrap();
+        scratch.data().puzzle_text(puzzle()).unwrap();
+
+        assert_eq!(scratch.site.page_requests.get(), 1);
     }
 
     #[test]

@@ -50,6 +50,14 @@ mod tests {
         fn input(&self, _session: &Session, _puzzle: PuzzleId) -> Result<String, SiteError> {
             unreachable!("login downloads nothing")
         }
+
+        fn puzzle_page(
+            &self,
+            _session: Option<&Session>,
+            _puzzle: PuzzleId,
+        ) -> Result<String, SiteError> {
+            unreachable!("login downloads nothing")
+        }
     }
 
     fn store() -> (TempDir, SessionStore) {

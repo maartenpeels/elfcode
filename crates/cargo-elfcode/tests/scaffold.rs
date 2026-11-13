@@ -86,6 +86,7 @@ fn text(bytes: &[u8]) -> String {
 #[test]
 fn a_scaffolded_day_builds_and_runs() {
     let project = NewCrate::new();
+    project.write("data/2015/07/puzzle.md", "notes\n");
     project.write("data/2015/07/input.txt", "some\ninput\n");
 
     let scaffold = project.cargo_elfcode(&["scaffold", "7", "--year", "2015"]);
@@ -97,6 +98,7 @@ fn a_scaffolded_day_builds_and_runs() {
 2015 · day 07
   src/y2015/day07.rs          created
   data/2015/07/examples.toml  created
+  data/2015/07/puzzle.md      already there
   data/2015/07/input.txt      already there
 "
     );
@@ -119,6 +121,8 @@ fn a_scaffolded_day_builds_and_runs() {
 fn scaffolding_again_changes_nothing() {
     let project = NewCrate::new();
     project.write("src/y2015/day07.rs", "// my work\n");
+    // Without it the puzzle page would be fetched: it needs no login.
+    project.write("data/2015/07/puzzle.md", "notes\n");
 
     let output = project.cargo_elfcode(&["scaffold", "7", "--year", "2015"]);
 

@@ -11,6 +11,7 @@ mod event;
 mod gitignore;
 mod harness;
 mod project;
+mod puzzle_page;
 mod render;
 mod session;
 mod site;

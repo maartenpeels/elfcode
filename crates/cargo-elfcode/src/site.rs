@@ -32,6 +32,20 @@ pub trait Site {
 
     /// Downloads the puzzle input of the account `session` belongs to.
     fn input(&self, session: &Session, puzzle: PuzzleId) -> Result<String, SiteError>;
+
+    /// Downloads the puzzle page as HTML. With a session it includes part 2
+    /// once part 1 is solved.
+    fn puzzle_page(&self, session: Option<&Session>, puzzle: PuzzleId)
+    -> Result<String, SiteError>;
+}
+
+/// Where a puzzle's page is on the public site.
+pub fn puzzle_url(puzzle: PuzzleId) -> String {
+    format!("{BASE_URL}{}", puzzle_path(puzzle))
+}
+
+fn puzzle_path(puzzle: PuzzleId) -> String {
+    format!("/{}/day/{}", puzzle.year(), puzzle.day())
 }
 
 #[derive(Debug, Error)]
@@ -74,13 +88,13 @@ impl HttpSite {
         }
     }
 
-    fn get(&self, path: &str, session: &Session) -> Result<String, SiteError> {
+    fn get(&self, path: &str, session: Option<&Session>) -> Result<String, SiteError> {
         let url = format!("{}{path}", self.base_url);
-        let mut response = self
-            .agent
-            .get(&url)
-            .header("Cookie", session.cookie())
-            .call()?;
+        let mut request = self.agent.get(&url);
+        if let Some(session) = session {
+            request = request.header("Cookie", session.cookie());
+        }
+        let mut response = request.call()?;
 
         match response.status().as_u16() {
             // Observed on the live site: 400 "Please log in" without a
@@ -95,12 +109,19 @@ impl HttpSite {
 
 impl Site for HttpSite {
     fn check_session(&self, session: &Session) -> Result<(), SiteError> {
-        self.get(SESSION_PROBE, session).map(drop)
+        self.get(SESSION_PROBE, Some(session)).map(drop)
     }
 
     fn input(&self, session: &Session, puzzle: PuzzleId) -> Result<String, SiteError> {
-        let path = format!("/{}/day/{}/input", puzzle.year(), puzzle.day());
-        self.get(&path, session)
+        self.get(&format!("{}/input", puzzle_path(puzzle)), Some(session))
+    }
+
+    fn puzzle_page(
+        &self,
+        session: Option<&Session>,
+        puzzle: PuzzleId,
+    ) -> Result<String, SiteError> {
+        self.get(&puzzle_path(puzzle), session)
     }
 }
 
@@ -167,6 +188,28 @@ mod tests {
         assert!(
             request.contains(&format!("cookie: session={TOKEN}\n")),
             "{request}"
+        );
+    }
+
+    #[test]
+    fn downloads_a_puzzle_page_with_or_without_a_session() {
+        for session in [Some(session()), None] {
+            let (site, server) = serve_once("200 OK", "<html></html>");
+
+            let page = site.puzzle_page(session.as_ref(), day_3_of_2026()).unwrap();
+
+            assert_eq!(page, "<html></html>");
+            let request = server.join().unwrap();
+            assert!(request.starts_with("get /2026/day/3 "), "{request}");
+            assert_eq!(request.contains("cookie:"), session.is_some(), "{request}");
+        }
+    }
+
+    #[test]
+    fn links_to_the_public_puzzle_page() {
+        assert_eq!(
+            puzzle_url(day_3_of_2026()),
+            "https://adventofcode.com/2026/day/3"
         );
     }
 
