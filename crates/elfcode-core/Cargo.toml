@@ -1,9 +1,13 @@
 [package]
 name = "elfcode-core"
-description = "Domain types shared by the library, its build script support and the CLI"
+description = "Domain types and the process protocol shared by the elfcode crates"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["advent-of-code", "aoc"]
 
 [dependencies]
 camino.workspace = true

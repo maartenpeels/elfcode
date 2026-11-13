@@ -1,7 +1,6 @@
 //! Support for the example tests that `elfcode-build` generates.
 
-pub use elfcode_core::Part;
-use elfcode_core::{DayOutcome, Failure, FailureKind, PartOutcome, Parts};
+use elfcode_core::{DayOutcome, Failure, FailureKind, Part, PartOutcome, Parts};
 
 use crate::{Solution, harness};
 

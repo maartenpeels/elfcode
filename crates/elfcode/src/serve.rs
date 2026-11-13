@@ -6,7 +6,7 @@ use camino::Utf8PathBuf;
 use elfcode_core::{DecodeError, PuzzleId, Request};
 use thiserror::Error;
 
-use crate::Entry;
+use crate::registry::Entry;
 
 const NOT_DRIVEN: &str = "\
 This binary is driven by `cargo elfcode`, which sends it a request on stdin.

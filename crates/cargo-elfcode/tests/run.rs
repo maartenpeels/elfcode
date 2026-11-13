@@ -2,8 +2,10 @@
 //! with a nested cargo. `--debug` reuses the artifacts the test run already
 //! built.
 
+use std::path::Path;
 use std::process::{Command, Output};
 
+const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 const EXAMPLE_CRATE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/solutions");
 
 /// Runs with an empty config directory, so the tests neither see a real
@@ -17,6 +19,8 @@ fn cargo_elfcode(args: &[&str]) -> Output {
         .current_dir(EXAMPLE_CRATE)
         .env("XDG_CONFIG_HOME", config.path())
         .env("APPDATA", config.path())
+        // Absolute, so an inherited relative one cannot land in the example.
+        .env("CARGO_TARGET_DIR", Path::new(WORKSPACE).join("target"))
         .output()
         .unwrap()
 }

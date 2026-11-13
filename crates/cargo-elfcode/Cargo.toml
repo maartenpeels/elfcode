@@ -1,9 +1,16 @@
 [package]
 name = "cargo-elfcode"
-description = "Run, test and submit Advent of Code solutions written with elfcode"
+description = "Fetch, run, test and submit Advent of Code solutions written with elfcode"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 repository.workspace = true
+readme = "../../README.md"
+keywords = ["advent-of-code", "aoc", "cargo-subcommand", "cli", "puzzle"]
+categories = ["command-line-utilities", "development-tools::cargo-plugins"]
+# The end-to-end tests build the example crate of the workspace.
+exclude = ["tests/"]
 
 [dependencies]
 anyhow.workspace = true

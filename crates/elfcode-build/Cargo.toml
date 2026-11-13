@@ -1,9 +1,14 @@
 [package]
 name = "elfcode-build"
-description = "Build script support for elfcode: finds the day files and generates their registry"
+description = "Build script support for elfcode: finds the day files and generates their registry and example tests"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["advent-of-code", "aoc", "build-script"]
+categories = ["development-tools::build-utils"]
 
 [dependencies]
 camino.workspace = true

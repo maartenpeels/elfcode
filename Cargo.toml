@@ -5,26 +5,28 @@ members = ["crates/*", "examples/*"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/maartenpeels/elfcode"
 
 [workspace.dependencies]
-elfcode = { path = "crates/elfcode" }
-elfcode-build = { path = "crates/elfcode-build" }
-elfcode-core = { path = "crates/elfcode-core" }
+elfcode = { version = "=0.1.0", path = "crates/elfcode" }
+elfcode-build = { version = "=0.1.0", path = "crates/elfcode-build" }
+elfcode-core = { version = "=0.1.0", path = "crates/elfcode-core" }
 
-anyhow = "1"
-camino = { version = "1", features = ["serde1"] }
-clap = { version = "4", features = ["derive"] }
+anyhow = "1.0"
+camino = { version = "1.2", features = ["serde1"] }
+clap = { version = "4.6", features = ["derive"] }
 ego-tree = "0.11"
 etcetera = "0.11"
-jiff = { version = "0.2", features = ["serde"] }
+jiff = { version = "0.2.43", features = ["serde"] }
 scraper = "0.29"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tempfile = "3"
-thiserror = "2"
-toml = "1"
-ureq = "3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tempfile = "3.27"
+thiserror = "2.0"
+toml = "1.2"
+ureq = "3.5"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

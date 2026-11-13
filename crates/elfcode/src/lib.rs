@@ -25,17 +25,26 @@
 //! its whole `src/main.rs`.
 
 mod answer;
-pub mod harness;
+mod harness;
 pub mod prelude;
 mod registry;
 mod serve;
 mod solution;
-pub mod testing;
+mod testing;
 
 pub use answer::{Answer, Unsolved};
-pub use registry::Entry;
-pub use serve::serve;
 pub use solution::Solution;
+
+/// Used by the code `elfcode-build` generates and by [`main!`]. Not part of
+/// the public API: it can change in any release.
+#[doc(hidden)]
+pub mod __private {
+    pub use elfcode_core::Part;
+
+    pub use crate::registry::Entry;
+    pub use crate::serve::serve;
+    pub use crate::testing::assert_example;
+}
 
 /// Declares the day modules that `elfcode-build` found and a `main` that
 /// serves them.
@@ -48,7 +57,7 @@ macro_rules! main {
         include!(concat!(env!("OUT_DIR"), "/elfcode.rs"));
 
         fn main() -> ::std::process::ExitCode {
-            $crate::serve(REGISTRY)
+            $crate::__private::serve(REGISTRY)
         }
     };
 }
