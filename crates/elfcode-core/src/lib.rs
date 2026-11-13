@@ -4,6 +4,7 @@
 //! that is valid.
 
 mod day;
+pub mod layout;
 mod part;
 mod puzzle;
 mod report;

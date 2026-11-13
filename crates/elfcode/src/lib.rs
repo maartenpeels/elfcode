@@ -30,6 +30,7 @@ pub mod prelude;
 mod registry;
 mod serve;
 mod solution;
+pub mod testing;
 
 pub use answer::{Answer, Unsolved};
 pub use registry::Entry;

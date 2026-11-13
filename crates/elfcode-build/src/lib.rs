@@ -9,6 +9,10 @@
 //!
 //! Every `src/y{YYYY}/day{DD}.rs` becomes a module holding a `Day{DD}`
 //! solution, and `elfcode::main!()` picks up the generated registry.
+//!
+//! Every example in `data/{YYYY}/{DD}/examples.toml` becomes one test per
+//! part it has an answer for, named like
+//! `y2026::day03_examples::example_1::part1`.
 
 #![allow(
     clippy::needless_doctest_main,
@@ -16,24 +20,28 @@
 )]
 
 mod discover;
+mod examples;
 mod render;
 
 use std::error::Error;
 use std::{env, fs, io, iter, process};
 
 use camino::{Utf8Path, Utf8PathBuf};
+use elfcode_core::{PuzzleId, layout};
 use thiserror::Error;
 
-use crate::discover::{DiscoverError, discover};
+use crate::discover::{DayFile, DiscoverError, discover};
+use crate::examples::{Example, ExamplesError};
 use crate::render::render;
 
 /// Must match the file name `elfcode::main!` includes.
 const GENERATED_FILE: &str = "elfcode.rs";
 
-/// Generates the day modules and registry for the crate being built.
+/// Generates the day modules, example tests and registry for the crate
+/// being built.
 ///
-/// A file that breaks the naming convention fails the build with a message
-/// naming that file.
+/// A file that breaks the naming convention, or an examples file with a
+/// mistake in it, fails the build with a message naming that file.
 pub fn generate() {
     if let Err(error) = try_generate() {
         println!("cargo::error={}", chain(&error));
@@ -47,6 +55,8 @@ enum GenerateError {
     NotABuildScript(&'static str),
     #[error(transparent)]
     Discover(#[from] DiscoverError),
+    #[error(transparent)]
+    Examples(#[from] ExamplesError),
     #[error("could not write {path}")]
     Write {
         path: Utf8PathBuf,
@@ -59,9 +69,32 @@ fn try_generate() -> Result<(), GenerateError> {
     let generated = env_path("OUT_DIR")?.join(GENERATED_FILE);
 
     println!("cargo::rerun-if-changed=src");
+    // Cargo treats a missing path as always changed, which would rebuild
+    // the crate on every run until the first puzzle is fetched.
+    if crate_root.join(layout::DATA_DIR).exists() {
+        println!("cargo::rerun-if-changed={}", layout::DATA_DIR);
+    }
 
-    let days = discover(&crate_root)?;
+    let days = discover(&crate_root)?
+        .into_iter()
+        .map(|DayFile { puzzle, path }| {
+            Ok(DayModule {
+                puzzle,
+                path,
+                examples: examples::load(&crate_root, puzzle)?,
+            })
+        })
+        .collect::<Result<Vec<_>, ExamplesError>>()?;
+
     write(&generated, &render(&crate_root, &days))
+}
+
+/// Everything generated for one day.
+struct DayModule {
+    puzzle: PuzzleId,
+    /// Relative to the crate root.
+    path: Utf8PathBuf,
+    examples: Vec<Example>,
 }
 
 fn env_path(name: &'static str) -> Result<Utf8PathBuf, GenerateError> {

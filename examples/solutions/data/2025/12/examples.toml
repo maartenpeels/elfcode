@@ -1,0 +1,14 @@
+[[example]]
+input = '''
+ab
+abcd
+abc
+'''
+part1 = "3"
+part2 = "abcd"
+
+[[example]]
+input = '''
+  indented
+'''
+part2 = "  indented"

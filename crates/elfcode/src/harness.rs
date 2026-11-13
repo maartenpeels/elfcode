@@ -1,22 +1,20 @@
-//! Runs a [`Solution`] and describes what happened as a [`DayReport`].
+//! Runs a [`Solution`] and describes what happened as a [`DayOutcome`].
 //!
 //! Nothing here reads files, prints, or exits: a failing or panicking
-//! solution is a value in the report, not a failure of the run.
+//! solution is a value in the outcome, not a failure of the run.
 
 use std::any::Any;
 use std::panic::{self, AssertUnwindSafe};
 use std::time::{Duration, Instant};
 
-use elfcode_core::{
-    DayOutcome, DayReport, Failure, FailureKind, Part, PartOutcome, Parts, PuzzleId,
-};
+use elfcode_core::{DayOutcome, Failure, FailureKind, Part, PartOutcome, Parts};
 
 use crate::{Answer, Solution};
 
 /// Parses `raw` once, then runs the selected parts against the result.
 #[must_use]
-pub fn run<S: Solution>(puzzle: PuzzleId, raw: &str, parts: Parts) -> DayReport {
-    let outcome = match attempt(|| S::parse(raw)) {
+pub fn run<S: Solution>(raw: &str, parts: Parts) -> DayOutcome {
+    match attempt(|| S::parse(raw)) {
         Ok((input, parse_time)) => DayOutcome::Parsed {
             parse_time,
             part1: parts
@@ -27,9 +25,7 @@ pub fn run<S: Solution>(puzzle: PuzzleId, raw: &str, parts: Parts) -> DayReport 
                 .then(|| run_part(|| S::part2(&input))),
         },
         Err(failure) => DayOutcome::ParseFailed { failure },
-    };
-
-    DayReport { puzzle, outcome }
+    }
 }
 
 fn run_part<A: Answer>(solve: impl FnOnce() -> anyhow::Result<A>) -> PartOutcome {
@@ -89,18 +85,12 @@ fn is_todo(failure: &Failure) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::Context;
-    use elfcode_core::{Day, Year};
-
     use super::*;
     use crate::prelude::*;
+    use anyhow::Context;
 
-    fn puzzle() -> PuzzleId {
-        PuzzleId::new(Year::try_from(2026).unwrap(), Day::try_from(3).unwrap()).unwrap()
-    }
-
-    fn parts_of(report: DayReport) -> (Option<PartOutcome>, Option<PartOutcome>) {
-        match report.outcome {
+    fn parts_of(outcome: DayOutcome) -> (Option<PartOutcome>, Option<PartOutcome>) {
+        match outcome {
             DayOutcome::Parsed { part1, part2, .. } => (part1, part2),
             DayOutcome::ParseFailed { failure } => panic!("parse failed: {failure:?}"),
         }
@@ -171,7 +161,7 @@ mod tests {
 
     #[test]
     fn reports_the_unsolved_placeholder_as_not_implemented() {
-        let (part1, part2) = parts_of(run::<Scaffolded>(puzzle(), "", Parts::Both));
+        let (part1, part2) = parts_of(run::<Scaffolded>("", Parts::Both));
 
         assert_eq!(part1, Some(PartOutcome::NotImplemented));
         assert_eq!(part2, Some(PartOutcome::NotImplemented));
@@ -179,7 +169,7 @@ mod tests {
 
     #[test]
     fn solves_both_parts_from_one_borrowed_parse() {
-        let (part1, part2) = parts_of(run::<Borrowing>(puzzle(), "a\nb\nc", Parts::Both));
+        let (part1, part2) = parts_of(run::<Borrowing>("a\nb\nc", Parts::Both));
 
         assert_eq!(answer_of(part1), "3");
         assert_eq!(answer_of(part2), "c");
@@ -187,7 +177,7 @@ mod tests {
 
     #[test]
     fn skips_the_part_that_was_not_selected() {
-        let (part1, part2) = parts_of(run::<Borrowing>(puzzle(), "a", Parts::Only(Part::Two)));
+        let (part1, part2) = parts_of(run::<Borrowing>("a", Parts::Only(Part::Two)));
 
         assert_eq!(part1, None);
         assert_eq!(answer_of(part2), "a");
@@ -195,7 +185,7 @@ mod tests {
 
     #[test]
     fn reports_todo_as_not_implemented_and_keeps_the_other_part() {
-        let (part1, part2) = parts_of(run::<Unfinished>(puzzle(), "7", Parts::Both));
+        let (part1, part2) = parts_of(run::<Unfinished>("7", Parts::Both));
 
         assert_eq!(answer_of(part1), "6");
         assert_eq!(part2, Some(PartOutcome::NotImplemented));
@@ -203,7 +193,7 @@ mod tests {
 
     #[test]
     fn reports_a_returned_error_with_its_context() {
-        let (_, part2) = parts_of(run::<Borrowing>(puzzle(), "", Parts::Both));
+        let (_, part2) = parts_of(run::<Borrowing>("", Parts::Both));
 
         assert_eq!(
             failure_of(part2),
@@ -216,7 +206,7 @@ mod tests {
 
     #[test]
     fn reports_a_panic_that_is_not_todo_as_a_failure() {
-        let (part1, _) = parts_of(run::<Unfinished>(puzzle(), "0", Parts::Both));
+        let (part1, _) = parts_of(run::<Unfinished>("0", Parts::Both));
 
         assert_eq!(
             failure_of(part1),
@@ -229,10 +219,10 @@ mod tests {
 
     #[test]
     fn reports_a_parse_error_without_running_any_part() {
-        let report = run::<Unfinished>(puzzle(), "seven", Parts::Both);
+        let outcome = run::<Unfinished>("seven", Parts::Both);
 
-        let DayOutcome::ParseFailed { failure } = report.outcome else {
-            panic!("parse succeeded: {report:?}");
+        let DayOutcome::ParseFailed { failure } = outcome else {
+            panic!("parse succeeded: {outcome:?}");
         };
         assert_eq!(failure.kind, FailureKind::Error);
         assert!(

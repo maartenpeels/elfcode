@@ -1,4 +1,4 @@
-use elfcode_core::{Day, DayReport, Parts, PuzzleId, Year};
+use elfcode_core::{Day, DayOutcome, DayReport, Parts, PuzzleId, Year};
 
 use crate::{Solution, harness};
 
@@ -9,7 +9,7 @@ use crate::{Solution, harness};
 #[derive(Debug, Clone, Copy)]
 pub struct Entry {
     puzzle: PuzzleId,
-    run: fn(PuzzleId, &str, Parts) -> DayReport,
+    run: fn(&str, Parts) -> DayOutcome,
 }
 
 impl Entry {
@@ -46,6 +46,9 @@ impl Entry {
 
     #[must_use]
     pub fn run(&self, raw: &str, parts: Parts) -> DayReport {
-        (self.run)(self.puzzle, raw, parts)
+        DayReport {
+            puzzle: self.puzzle,
+            outcome: (self.run)(raw, parts),
+        }
     }
 }
