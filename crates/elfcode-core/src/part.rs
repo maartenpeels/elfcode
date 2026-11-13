@@ -24,6 +24,23 @@ impl Part {
     }
 }
 
+/// Which parts of a day to run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Parts {
+    Both,
+    Only(Part),
+}
+
+impl Parts {
+    #[must_use]
+    pub fn includes(self, part: Part) -> bool {
+        match self {
+            Self::Both => true,
+            Self::Only(only) => only == part,
+        }
+    }
+}
+
 impl TryFrom<u8> for Part {
     type Error = InvalidPart;
 
@@ -83,6 +100,14 @@ mod tests {
     fn rejects_other_numbers() {
         assert_eq!(Part::try_from(0), Err(InvalidPart(0)));
         assert_eq!(Part::try_from(3), Err(InvalidPart(3)));
+    }
+
+    #[test]
+    fn selection_includes_only_what_was_asked_for() {
+        assert!(Parts::Both.includes(Part::One));
+        assert!(Parts::Both.includes(Part::Two));
+        assert!(Parts::Only(Part::Two).includes(Part::Two));
+        assert!(!Parts::Only(Part::Two).includes(Part::One));
     }
 
     #[test]

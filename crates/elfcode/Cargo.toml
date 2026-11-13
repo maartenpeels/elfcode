@@ -1,0 +1,12 @@
+[package]
+name = "elfcode"
+description = "Write Advent of Code solutions as one small trait impl per day"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+elfcode-core.workspace = true
+
+[lints]
+workspace = true
