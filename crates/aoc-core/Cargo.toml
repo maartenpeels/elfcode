@@ -1,0 +1,11 @@
+[package]
+name = "aoc-core"
+description = "Domain types shared by the library, its build script support and the CLI"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true
