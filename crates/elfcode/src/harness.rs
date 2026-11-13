@@ -34,6 +34,7 @@ pub fn run<S: Solution>(puzzle: PuzzleId, raw: &str, parts: Parts) -> DayReport 
 
 fn run_part<A: Answer>(solve: impl FnOnce() -> anyhow::Result<A>) -> PartOutcome {
     match attempt(solve) {
+        Ok((answer, _)) if answer.is_unsolved() => PartOutcome::NotImplemented,
         Ok((answer, time)) => PartOutcome::Solved {
             answer: answer.to_string(),
             time,
@@ -150,6 +151,30 @@ mod tests {
         fn part2(_input: &Self::Input<'_>) -> Result<impl Answer> {
             todo!("needs a faster approach") as Result<u64>
         }
+    }
+
+    struct Scaffolded;
+
+    impl Solution for Scaffolded {
+        type Input<'a> = &'a str;
+
+        fn parse(raw: &str) -> Result<Self::Input<'_>> {
+            Ok(raw)
+        }
+        fn part1(_input: &Self::Input<'_>) -> Result<impl Answer> {
+            Ok(Unsolved)
+        }
+        fn part2(_input: &Self::Input<'_>) -> Result<impl Answer> {
+            Ok(&Unsolved)
+        }
+    }
+
+    #[test]
+    fn reports_the_unsolved_placeholder_as_not_implemented() {
+        let (part1, part2) = parts_of(run::<Scaffolded>(puzzle(), "", Parts::Both));
+
+        assert_eq!(part1, Some(PartOutcome::NotImplemented));
+        assert_eq!(part2, Some(PartOutcome::NotImplemented));
     }
 
     #[test]

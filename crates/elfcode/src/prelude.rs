@@ -2,4 +2,4 @@
 
 pub use anyhow::{Context, Result, anyhow, bail, ensure};
 
-pub use crate::{Answer, Solution};
+pub use crate::{Answer, Solution, Unsolved};

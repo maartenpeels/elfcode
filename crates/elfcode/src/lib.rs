@@ -15,7 +15,7 @@
 //!         Ok(input.len())
 //!     }
 //!     fn part2(_input: &Self::Input<'_>) -> Result<impl Answer> {
-//!         Ok("not solved yet")
+//!         Ok(Unsolved)
 //!     }
 //! }
 //! ```
@@ -25,5 +25,5 @@ pub mod harness;
 pub mod prelude;
 mod solution;
 
-pub use answer::Answer;
+pub use answer::{Answer, Unsolved};
 pub use solution::Solution;
