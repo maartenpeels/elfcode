@@ -1,20 +1,17 @@
-use elfcode_core::{DayNotInEvent, DayRequest, InvalidYear, Parts, PuzzleId};
+use elfcode_core::{DayRequest, Parts};
 use jiff::civil::Date;
 use thiserror::Error;
 
-use crate::cli::RunArgs;
+use crate::cli::{ResolveError, RunArgs};
 use crate::data::{DataError, PuzzleData};
-use crate::event;
 use crate::harness::{Harness, HarnessError};
 use crate::render;
 use crate::site::Site;
 
 #[derive(Debug, Error)]
 pub enum RunError {
-    #[error("could not tell the latest event from the system clock; pass --year")]
-    Clock(#[source] InvalidYear),
     #[error(transparent)]
-    Puzzle(#[from] DayNotInEvent),
+    Puzzle(#[from] ResolveError),
     #[error(transparent)]
     Input(#[from] DataError),
     #[error(transparent)]
@@ -31,11 +28,7 @@ pub fn execute(
     harness: &impl Harness,
     today: Date,
 ) -> Result<String, RunError> {
-    let year = match args.year {
-        Some(year) => year,
-        None => event::latest(today).map_err(RunError::Clock)?,
-    };
-    let puzzle = PuzzleId::new(year, args.day)?;
+    let puzzle = args.puzzle.resolve(today)?;
 
     let parts = args.part.map_or(Parts::Both, Parts::Only);
     let day = DayRequest {
@@ -59,6 +52,7 @@ mod tests {
     use jiff::civil::date;
 
     use super::*;
+    use crate::cli::PuzzleArgs;
     use crate::data::testing::Scratch;
 
     /// Answers every day with its line count and records what it was asked.
@@ -94,8 +88,10 @@ mod tests {
 
     fn args(day: u8, year: Option<u16>, part: Option<Part>) -> RunArgs {
         RunArgs {
-            day: Day::new(day).unwrap(),
-            year: year.map(|year| Year::new(year).unwrap()),
+            puzzle: PuzzleArgs {
+                day: Day::new(day).unwrap(),
+                year: year.map(|year| Year::new(year).unwrap()),
+            },
             part,
             debug: false,
         }

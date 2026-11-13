@@ -1,10 +1,8 @@
 use std::io;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use elfcode_core::{Day, DayNotInEvent, PuzzleId, Year};
+use elfcode_core::{Day, DayNotInEvent, PuzzleId, Year, layout};
 use thiserror::Error;
-
-const SRC: &str = "src";
 
 /// A day file that follows the convention.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +44,7 @@ pub(crate) enum Problem {
 pub(crate) fn discover(crate_root: &Utf8Path) -> Result<Vec<DayFile>, DiscoverError> {
     let mut days = Vec::new();
 
-    for entry in list(crate_root, Utf8Path::new(SRC))? {
+    for entry in list(crate_root, Utf8Path::new(layout::SRC_DIR))? {
         if !entry.is_dir {
             continue;
         }
@@ -145,7 +143,7 @@ mod tests {
     fn crate_with(files: &[&str]) -> (TempDir, Utf8PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(dir.path().to_owned()).unwrap();
-        fs::create_dir(root.join(SRC)).unwrap();
+        fs::create_dir(root.join(layout::SRC_DIR)).unwrap();
         for file in files {
             let path = root.join(file);
             fs::create_dir_all(path.parent().unwrap()).unwrap();

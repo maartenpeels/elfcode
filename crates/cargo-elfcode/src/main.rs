@@ -45,6 +45,16 @@ fn dispatch(command: Command) -> anyhow::Result<()> {
             let output = commands::login::execute(&args, &HttpSite::new(), &store)?;
             print!("{output}");
         }
+        Command::Scaffold(args) => {
+            let project = Project::locate()?;
+            let site = HttpSite::new();
+            let sessions = SessionStore::for_user()?;
+            let today = event::today();
+            let data = PuzzleData::new(&project, &site, &sessions, today);
+
+            let output = commands::scaffold::execute(&args, &data, today)?;
+            print!("{output}");
+        }
         Command::Run(args) => {
             let project = Project::locate()?;
             let profile = if args.debug {
@@ -56,9 +66,10 @@ fn dispatch(command: Command) -> anyhow::Result<()> {
             let harness = CargoHarness::new(&project, profile);
             let site = HttpSite::new();
             let sessions = SessionStore::for_user()?;
-            let data = PuzzleData::new(&project, &site, &sessions);
+            let today = event::today();
+            let data = PuzzleData::new(&project, &site, &sessions, today);
 
-            let output = commands::run::execute(&args, &data, &harness, event::today())?;
+            let output = commands::run::execute(&args, &data, &harness, today)?;
             print!("{output}");
         }
     }

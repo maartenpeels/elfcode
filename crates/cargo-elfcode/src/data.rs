@@ -2,8 +2,10 @@ use std::{fs, io};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use elfcode_core::{PuzzleId, layout};
+use jiff::civil::Date;
 use thiserror::Error;
 
+use crate::event;
 use crate::gitignore;
 use crate::project::Project;
 use crate::session::{SessionStore, StoreError};
@@ -15,10 +17,18 @@ pub struct PuzzleData<'a, S> {
     project: &'a Project,
     site: &'a S,
     sessions: &'a SessionStore,
+    /// US Eastern. Nothing is requested for a puzzle that has not unlocked.
+    today: Date,
 }
 
 #[derive(Debug, Error)]
 pub enum DataError {
+    #[error(
+        "{} day {} unlocks on {date} at midnight US Eastern; there is nothing to download yet",
+        .puzzle.year(),
+        .puzzle.day()
+    )]
+    NotUnlocked { puzzle: PuzzleId, date: Date },
     #[error(
         "{file} has not been downloaded yet and you are not logged in; run `cargo elfcode login <cookie>` first"
     )]
@@ -35,12 +45,17 @@ pub enum DataError {
 }
 
 impl<'a, S: Site> PuzzleData<'a, S> {
-    pub fn new(project: &'a Project, site: &'a S, sessions: &'a SessionStore) -> Self {
+    pub fn new(project: &'a Project, site: &'a S, sessions: &'a SessionStore, today: Date) -> Self {
         Self {
             project,
             site,
             sessions,
+            today,
         }
+    }
+
+    pub fn project(&self) -> &Project {
+        self.project
     }
 
     /// The absolute path of the puzzle input, downloading it when it is not
@@ -50,6 +65,14 @@ impl<'a, S: Site> PuzzleData<'a, S> {
         let path = self.project.path(&file);
         if path.is_file() {
             return Ok(path);
+        }
+
+        let unlocks = event::unlock_date(puzzle);
+        if self.today < unlocks {
+            return Err(DataError::NotUnlocked {
+                puzzle,
+                date: unlocks,
+            });
         }
 
         let Some(session) = self.sessions.load()? else {
@@ -79,6 +102,7 @@ impl<'a, S: Site> PuzzleData<'a, S> {
 pub mod testing {
     use std::cell::Cell;
 
+    use jiff::civil::date;
     use tempfile::TempDir;
 
     use super::*;
@@ -105,7 +129,8 @@ pub mod testing {
         }
     }
 
-    /// An empty project and a session store in a scratch directory.
+    /// An empty project and a session store in a scratch directory, on a
+    /// day when every puzzle the tests use has unlocked.
     pub struct Scratch {
         _dir: TempDir,
         pub project: Project,
@@ -134,7 +159,11 @@ pub mod testing {
         }
 
         pub fn data(&self) -> PuzzleData<'_, FakeSite> {
-            PuzzleData::new(&self.project, &self.site, &self.sessions)
+            self.data_on(date(2026, 12, 25))
+        }
+
+        pub fn data_on(&self, today: Date) -> PuzzleData<'_, FakeSite> {
+            PuzzleData::new(&self.project, &self.site, &self.sessions, today)
         }
 
         pub fn write(&self, file: &str, contents: &str) {
@@ -205,6 +234,34 @@ mod tests {
              run `cargo elfcode login <cookie>` first"
         );
         assert_eq!(scratch.site.downloads.get(), 0);
+    }
+
+    #[test]
+    fn requests_nothing_before_the_puzzle_unlocks() {
+        let scratch = Scratch::logged_in();
+
+        let error = scratch
+            .data_on(jiff::civil::date(2026, 12, 2))
+            .input(puzzle())
+            .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "2026 day 3 unlocks on 2026-12-03 at midnight US Eastern; there is nothing to download yet"
+        );
+        assert_eq!(scratch.site.downloads.get(), 0);
+    }
+
+    #[test]
+    fn downloads_on_the_day_the_puzzle_unlocks() {
+        let scratch = Scratch::logged_in();
+
+        scratch
+            .data_on(jiff::civil::date(2026, 12, 3))
+            .input(puzzle())
+            .unwrap();
+
+        assert_eq!(scratch.site.downloads.get(), 1);
     }
 
     #[test]

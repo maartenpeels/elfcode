@@ -1,0 +1,19 @@
+use elfcode::prelude::*;
+
+pub struct Day{{DAY}};
+
+impl Solution for Day{{DAY}} {
+    type Input<'a> = Vec<&'a str>;
+
+    fn parse(raw: &str) -> Result<Self::Input<'_>> {
+        Ok(raw.lines().collect())
+    }
+
+    fn part1(_input: &Self::Input<'_>) -> Result<impl Answer> {
+        Ok(Unsolved)
+    }
+
+    fn part2(_input: &Self::Input<'_>) -> Result<impl Answer> {
+        Ok(Unsolved)
+    }
+}

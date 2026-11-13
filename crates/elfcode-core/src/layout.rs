@@ -1,5 +1,5 @@
-//! Where a solutions crate keeps its puzzle data, relative to the crate
-//! root: `data/{YYYY}/{DD}/`.
+//! Where a solutions crate keeps its files, relative to the crate root:
+//! solutions in `src/y{YYYY}/day{DD}.rs`, puzzle data in `data/{YYYY}/{DD}/`.
 //!
 //! The directory mixes two kinds of file. The puzzle text and input are
 //! downloaded, can be fetched again, and must not be published. The
@@ -9,10 +9,19 @@ use camino::Utf8PathBuf;
 
 use crate::PuzzleId;
 
+pub const SRC_DIR: &str = "src";
 pub const DATA_DIR: &str = "data";
 pub const INPUT_FILE: &str = "input.txt";
 pub const PUZZLE_FILE: &str = "puzzle.md";
 pub const EXAMPLES_FILE: &str = "examples.toml";
+
+/// The file holding a day's solution, like `src/y2026/day03.rs`.
+#[must_use]
+pub fn source_file(puzzle: PuzzleId) -> Utf8PathBuf {
+    Utf8PathBuf::from(SRC_DIR)
+        .join(format!("y{}", puzzle.year()))
+        .join(format!("day{:02}.rs", puzzle.day()))
+}
 
 #[must_use]
 pub fn puzzle_dir(puzzle: PuzzleId) -> Utf8PathBuf {
@@ -54,6 +63,7 @@ mod tests {
     fn pads_the_day_but_not_the_year() {
         let puzzle = PuzzleId::new(Year::new(2026).unwrap(), Day::new(3).unwrap()).unwrap();
 
+        assert_eq!(source_file(puzzle), "src/y2026/day03.rs");
         assert_eq!(examples_file(puzzle), "data/2026/03/examples.toml");
     }
 

@@ -1,4 +1,4 @@
-use elfcode_core::{InvalidYear, Year};
+use elfcode_core::{InvalidYear, PuzzleId, Year};
 use jiff::Timestamp;
 use jiff::civil::Date;
 use jiff::tz::{self, TimeZone};
@@ -31,11 +31,26 @@ pub fn latest(today: Date) -> Result<Year, InvalidYear> {
     Year::new(u16::try_from(year).unwrap_or_default())
 }
 
+/// The date, US Eastern, on which a puzzle unlocks at midnight.
+pub fn unlock_date(puzzle: PuzzleId) -> Date {
+    let year = i16::try_from(puzzle.year().get()).expect("event years fit in an i16");
+    let day = i8::try_from(puzzle.day().get()).expect("days fit in an i8");
+    Date::new(year, 12, day).expect("every puzzle day is a date in December")
+}
+
 #[cfg(test)]
 mod tests {
     use jiff::civil::date;
 
     use super::*;
+
+    #[test]
+    fn a_puzzle_unlocks_on_its_day_of_december() {
+        let puzzle =
+            PuzzleId::new(Year::new(2026).unwrap(), elfcode_core::Day::new(3).unwrap()).unwrap();
+
+        assert_eq!(unlock_date(puzzle), date(2026, 12, 3));
+    }
 
     #[test]
     fn december_belongs_to_its_own_year() {
