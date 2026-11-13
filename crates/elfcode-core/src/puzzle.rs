@@ -15,7 +15,7 @@ impl PuzzleId {
     /// # Errors
     ///
     /// Fails when the event of `year` has fewer days than `day`.
-    pub fn new(year: Year, day: Day) -> Result<Self, DayNotInEvent> {
+    pub const fn new(year: Year, day: Day) -> Result<Self, DayNotInEvent> {
         if day.get() <= year.day_count() {
             Ok(Self { year, day })
         } else {

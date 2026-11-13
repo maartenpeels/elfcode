@@ -23,7 +23,11 @@
 mod answer;
 pub mod harness;
 pub mod prelude;
+mod registry;
+mod serve;
 mod solution;
 
 pub use answer::{Answer, Unsolved};
+pub use registry::Entry;
+pub use serve::serve;
 pub use solution::Solution;

@@ -18,6 +18,17 @@ impl Year {
 
     const FIRST_SHORT_EVENT: u16 = 2025;
 
+    /// # Errors
+    ///
+    /// Fails for a year before the first event.
+    pub const fn new(value: u16) -> Result<Self, InvalidYear> {
+        if value >= Self::FIRST.0 {
+            Ok(Self(value))
+        } else {
+            Err(InvalidYear(value))
+        }
+    }
+
     #[must_use]
     pub const fn get(self) -> u16 {
         self.0
@@ -38,11 +49,7 @@ impl TryFrom<u16> for Year {
     type Error = InvalidYear;
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
-        if value >= Self::FIRST.0 {
-            Ok(Self(value))
-        } else {
-            Err(InvalidYear(value))
-        }
+        Self::new(value)
     }
 }
 

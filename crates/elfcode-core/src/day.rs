@@ -17,6 +17,17 @@ impl Day {
     pub const FIRST: Self = Self(1);
     pub const LAST: Self = Self(25);
 
+    /// # Errors
+    ///
+    /// Fails for a day outside 1 through 25.
+    pub const fn new(value: u8) -> Result<Self, InvalidDay> {
+        if Self::FIRST.0 <= value && value <= Self::LAST.0 {
+            Ok(Self(value))
+        } else {
+            Err(InvalidDay(value))
+        }
+    }
+
     #[must_use]
     pub const fn get(self) -> u8 {
         self.0
@@ -27,11 +38,7 @@ impl TryFrom<u8> for Day {
     type Error = InvalidDay;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if (Self::FIRST.0..=Self::LAST.0).contains(&value) {
-            Ok(Self(value))
-        } else {
-            Err(InvalidDay(value))
-        }
+        Self::new(value)
     }
 }
 

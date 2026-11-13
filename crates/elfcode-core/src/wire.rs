@@ -1,20 +1,22 @@
-//! The line protocol between the harness and the CLI: one JSON object per
-//! line, each carrying the protocol version it was written with.
+//! The line protocol between the CLI and the harness: one JSON object per
+//! line, each carrying the protocol version it was written with. The CLI
+//! sends a [`Request`], the harness answers with one [`DayReport`] per day.
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::DayReport;
+use crate::{DayReport, Request};
 
-/// Bump on any change to the report types that an older reader would
+/// Bump on any change to the message types that an older reader would
 /// misread. The two sides are released separately and can drift.
 pub const PROTOCOL_VERSION: u32 = 1;
 
 #[derive(Serialize)]
-struct Envelope<'a> {
+struct Envelope<'a, T> {
     protocol: u32,
     #[serde(flatten)]
-    report: &'a DayReport,
+    message: &'a T,
 }
 
 #[derive(Deserialize)]
@@ -22,40 +24,56 @@ struct Header {
     protocol: u32,
 }
 
-impl DayReport {
-    /// Encodes the report as a single line, without a trailing newline.
-    ///
-    /// # Panics
-    ///
-    /// Never in practice: a report contains nothing JSON cannot represent.
-    #[must_use]
-    pub fn to_line(&self) -> String {
-        let envelope = Envelope {
-            protocol: PROTOCOL_VERSION,
-            report: self,
-        };
-        serde_json::to_string(&envelope)
-            .expect("a report holds only strings, numbers and string-keyed maps")
-    }
-
-    /// # Errors
-    ///
-    /// Fails when the line was written with another protocol version, or is
-    /// not a valid report.
-    pub fn from_line(line: &str) -> Result<Self, DecodeError> {
-        let Header { protocol } = serde_json::from_str(line)?;
-        if protocol != PROTOCOL_VERSION {
-            return Err(DecodeError::UnsupportedProtocol { found: protocol });
-        }
-        Ok(serde_json::from_str(line)?)
-    }
+fn encode<T: Serialize>(message: &T) -> String {
+    let envelope = Envelope {
+        protocol: PROTOCOL_VERSION,
+        message,
+    };
+    serde_json::to_string(&envelope)
+        .expect("a message holds only strings, numbers and string-keyed maps")
 }
+
+fn decode<T: DeserializeOwned>(line: &str) -> Result<T, DecodeError> {
+    let Header { protocol } = serde_json::from_str(line)?;
+    if protocol != PROTOCOL_VERSION {
+        return Err(DecodeError::UnsupportedProtocol { found: protocol });
+    }
+    Ok(serde_json::from_str(line)?)
+}
+
+macro_rules! impl_line_codec {
+    ($($message:ty),*) => {$(
+        impl $message {
+            /// Encodes the message as a single line, without a trailing
+            /// newline.
+            ///
+            /// # Panics
+            ///
+            /// Never in practice: a message contains nothing JSON cannot
+            /// represent.
+            #[must_use]
+            pub fn to_line(&self) -> String {
+                encode(self)
+            }
+
+            /// # Errors
+            ///
+            /// Fails when the line was written with another protocol
+            /// version, or is not a valid message of this type.
+            pub fn from_line(line: &str) -> Result<Self, DecodeError> {
+                decode(line)
+            }
+        }
+    )*};
+}
+
+impl_line_codec!(Request, DayReport);
 
 #[derive(Debug, Error)]
 pub enum DecodeError {
-    #[error("report uses protocol {found}, this version understands {PROTOCOL_VERSION}")]
+    #[error("message uses protocol {found}, this version understands {PROTOCOL_VERSION}")]
     UnsupportedProtocol { found: u32 },
-    #[error("report is malformed")]
+    #[error("message is malformed")]
     Malformed(#[from] serde_json::Error),
 }
 
@@ -64,7 +82,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::{Day, DayOutcome, Failure, FailureKind, PartOutcome, PuzzleId, Year};
+    use crate::{
+        Day, DayOutcome, DayRequest, Failure, FailureKind, Part, PartOutcome, Parts, PuzzleId, Year,
+    };
 
     fn puzzle(year: u16, day: u8) -> PuzzleId {
         PuzzleId::new(Year::try_from(year).unwrap(), Day::try_from(day).unwrap()).unwrap()
@@ -125,6 +145,21 @@ mod tests {
 
         for report in reports {
             assert_eq!(DayReport::from_line(&report.to_line()).unwrap(), report);
+        }
+    }
+
+    #[test]
+    fn round_trips_a_request() {
+        let requests = [Parts::Both, Parts::Only(Part::Two)].map(|parts| Request {
+            parts,
+            days: vec![DayRequest {
+                puzzle: puzzle(2026, 3),
+                input: "data/2026/03/input.txt".into(),
+            }],
+        });
+
+        for request in requests {
+            assert_eq!(Request::from_line(&request.to_line()).unwrap(), request);
         }
     }
 
