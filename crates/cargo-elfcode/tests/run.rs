@@ -6,11 +6,17 @@ use std::process::{Command, Output};
 
 const EXAMPLE_CRATE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/solutions");
 
+/// Runs with an empty config directory, so the tests neither see a real
+/// session nor ever reach the network.
 fn cargo_elfcode(args: &[&str]) -> Output {
+    let config = tempfile::tempdir().unwrap();
+
     Command::new(env!("CARGO_BIN_EXE_cargo-elfcode"))
         .arg("elfcode")
         .args(args)
         .current_dir(EXAMPLE_CRATE)
+        .env("XDG_CONFIG_HOME", config.path())
+        .env("APPDATA", config.path())
         .output()
         .unwrap()
 }
@@ -51,12 +57,14 @@ fn passes_through_what_the_solution_prints() {
 }
 
 #[test]
-fn explains_a_missing_input() {
+fn asks_for_a_login_instead_of_downloading_without_one() {
     let output = cargo_elfcode(&["run", "12", "--year", "2025", "--debug"]);
 
     assert!(!output.status.success());
     assert!(
-        text(&output.stderr).contains("error: no puzzle input at data/2025/12/input.txt"),
+        text(&output.stderr).contains(
+            "error: data/2025/12/input.txt has not been downloaded yet and you are not logged in"
+        ),
         "{}",
         text(&output.stderr)
     );

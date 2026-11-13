@@ -1,13 +1,13 @@
-use camino::Utf8PathBuf;
-use elfcode_core::{DayNotInEvent, DayRequest, InvalidYear, Parts, PuzzleId, layout};
+use elfcode_core::{DayNotInEvent, DayRequest, InvalidYear, Parts, PuzzleId};
 use jiff::civil::Date;
 use thiserror::Error;
 
 use crate::cli::RunArgs;
+use crate::data::{DataError, PuzzleData};
 use crate::event;
 use crate::harness::{Harness, HarnessError};
-use crate::project::Project;
 use crate::render;
+use crate::site::Site;
 
 #[derive(Debug, Error)]
 pub enum RunError {
@@ -15,18 +15,19 @@ pub enum RunError {
     Clock(#[source] InvalidYear),
     #[error(transparent)]
     Puzzle(#[from] DayNotInEvent),
-    #[error("no puzzle input at {0}; downloading it is not built yet, so save it there by hand")]
-    MissingInput(Utf8PathBuf),
+    #[error(transparent)]
+    Input(#[from] DataError),
     #[error(transparent)]
     Harness(#[from] HarnessError),
     #[error("the solutions finished without reporting on the day")]
     NoReport,
 }
 
-/// Runs one day against its puzzle input and returns the text to print.
+/// Runs one day against its puzzle input, downloading the input when it is
+/// not on disk yet, and returns the text to print.
 pub fn execute(
     args: &RunArgs,
-    project: &Project,
+    data: &PuzzleData<'_, impl Site>,
     harness: &impl Harness,
     today: Date,
 ) -> Result<String, RunError> {
@@ -36,15 +37,10 @@ pub fn execute(
     };
     let puzzle = PuzzleId::new(year, args.day)?;
 
-    let input = layout::input_file(puzzle);
-    if !project.path(&input).is_file() {
-        return Err(RunError::MissingInput(input));
-    }
-
     let parts = args.part.map_or(Parts::Both, Parts::Only);
     let day = DayRequest {
         puzzle,
-        input: project.path(input),
+        input: data.input(puzzle)?,
     };
 
     let reports = harness.run(parts, vec![day])?;
@@ -61,9 +57,9 @@ mod tests {
 
     use elfcode_core::{Day, DayOutcome, DayReport, Part, PartOutcome, Year};
     use jiff::civil::date;
-    use tempfile::TempDir;
 
     use super::*;
+    use crate::data::testing::Scratch;
 
     /// Answers every day with its line count and records what it was asked.
     #[derive(Default)]
@@ -96,15 +92,6 @@ mod tests {
         }
     }
 
-    fn project_with_input(relative: &str) -> (TempDir, Project) {
-        let dir = tempfile::tempdir().unwrap();
-        let project = Project::at(Utf8PathBuf::from_path_buf(dir.path().to_owned()).unwrap());
-        let input = project.path(relative);
-        fs::create_dir_all(input.parent().unwrap()).unwrap();
-        fs::write(input, "a\nb\nc\n").unwrap();
-        (dir, project)
-    }
-
     fn args(day: u8, year: Option<u16>, part: Option<Part>) -> RunArgs {
         RunArgs {
             day: Day::new(day).unwrap(),
@@ -118,12 +105,13 @@ mod tests {
 
     #[test]
     fn runs_the_day_on_its_input_and_renders_the_report() {
-        let (_dir, project) = project_with_input("data/2024/03/input.txt");
+        let scratch = Scratch::logged_out();
+        scratch.write("data/2024/03/input.txt", "a\nb\n");
         let harness = FakeHarness::default();
 
         let output = execute(
             &args(3, Some(2024), None),
-            &project,
+            &scratch.data(),
             &harness,
             IN_NOVEMBER_2026,
         )
@@ -131,21 +119,40 @@ mod tests {
 
         assert_eq!(
             output,
-            "2024 · day 03\n  parse      1.0µs\n  part 1     3            2.0µs\n"
+            "2024 · day 03\n  parse      1.0µs\n  part 1     2            2.0µs\n"
         );
         let asked = harness.asked.borrow();
         let (parts, days) = &asked[0];
         assert_eq!(*parts, Parts::Both);
-        assert_eq!(days[0].input, project.path("data/2024/03/input.txt"));
+        assert_eq!(
+            days[0].input,
+            scratch.project.path("data/2024/03/input.txt")
+        );
+    }
+
+    #[test]
+    fn downloads_the_input_when_it_is_missing() {
+        let scratch = Scratch::logged_in();
+
+        let output = execute(
+            &args(3, Some(2024), None),
+            &scratch.data(),
+            &FakeHarness::default(),
+            IN_NOVEMBER_2026,
+        )
+        .unwrap();
+
+        assert!(output.contains("part 1     3 "), "{output}");
+        assert_eq!(scratch.site.downloads.get(), 1);
     }
 
     #[test]
     fn defaults_to_the_latest_event() {
-        let (_dir, project) = project_with_input("data/2025/03/input.txt");
+        let scratch = Scratch::logged_in();
 
         let output = execute(
             &args(3, None, None),
-            &project,
+            &scratch.data(),
             &FakeHarness::default(),
             IN_NOVEMBER_2026,
         )
@@ -156,12 +163,12 @@ mod tests {
 
     #[test]
     fn asks_for_only_the_selected_part() {
-        let (_dir, project) = project_with_input("data/2024/03/input.txt");
+        let scratch = Scratch::logged_in();
         let harness = FakeHarness::default();
 
         execute(
             &args(3, Some(2024), Some(Part::Two)),
-            &project,
+            &scratch.data(),
             &harness,
             IN_NOVEMBER_2026,
         )
@@ -171,37 +178,40 @@ mod tests {
     }
 
     #[test]
-    fn refuses_a_day_the_event_does_not_have_before_running_anything() {
-        let (_dir, project) = project_with_input("data/2025/13/input.txt");
+    fn refuses_a_day_the_event_does_not_have_before_doing_anything() {
+        let scratch = Scratch::logged_in();
         let harness = FakeHarness::default();
 
         let error = execute(
             &args(13, Some(2025), None),
-            &project,
+            &scratch.data(),
             &harness,
             IN_NOVEMBER_2026,
         )
         .unwrap_err();
 
         assert!(matches!(error, RunError::Puzzle(_)));
+        assert_eq!(scratch.site.downloads.get(), 0);
         assert!(harness.asked.borrow().is_empty());
     }
 
     #[test]
-    fn names_the_input_file_that_is_missing() {
-        let (_dir, project) = project_with_input("data/2024/03/input.txt");
+    fn does_not_build_anything_when_the_input_cannot_be_had() {
+        let scratch = Scratch::logged_out();
+        let harness = FakeHarness::default();
 
         let error = execute(
             &args(4, Some(2024), None),
-            &project,
-            &FakeHarness::default(),
+            &scratch.data(),
+            &harness,
             IN_NOVEMBER_2026,
         )
         .unwrap_err();
 
         assert!(
-            matches!(&error, RunError::MissingInput(path) if path == "data/2024/04/input.txt"),
+            matches!(error, RunError::Input(DataError::NotLoggedIn { .. })),
             "{error}"
         );
+        assert!(harness.asked.borrow().is_empty());
     }
 }

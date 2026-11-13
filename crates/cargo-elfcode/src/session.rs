@@ -57,13 +57,6 @@ pub struct SessionStore {
 }
 
 #[derive(Debug, Error)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "loading comes into use with the download commands"
-    )
-)]
 pub enum StoreError {
     #[error("could not find your home directory")]
     NoHome(#[from] etcetera::HomeDirError),
@@ -126,13 +119,6 @@ impl SessionStore {
     }
 
     /// The stored session, or `None` when the user has not logged in.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "loading comes into use with the download commands"
-        )
-    )]
     pub fn load(&self) -> Result<Option<Session>, StoreError> {
         match fs::read_to_string(&self.path) {
             Ok(contents) => contents.parse().map(Some).map_err(|_| StoreError::Damaged {

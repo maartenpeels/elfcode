@@ -6,7 +6,9 @@
 
 mod cli;
 mod commands;
+mod data;
 mod event;
+mod gitignore;
 mod harness;
 mod project;
 mod render;
@@ -18,6 +20,7 @@ use std::process::ExitCode;
 use clap::Parser;
 
 use crate::cli::{Cargo, Command};
+use crate::data::PuzzleData;
 use crate::harness::{CargoHarness, Profile};
 use crate::project::Project;
 use crate::session::SessionStore;
@@ -51,8 +54,11 @@ fn dispatch(command: Command) -> anyhow::Result<()> {
                 Profile::Release
             };
             let harness = CargoHarness::new(&project, profile);
+            let site = HttpSite::new();
+            let sessions = SessionStore::for_user()?;
+            let data = PuzzleData::new(&project, &site, &sessions);
 
-            let output = commands::run::execute(&args, &project, &harness, event::today())?;
+            let output = commands::run::execute(&args, &data, &harness, event::today())?;
             print!("{output}");
         }
     }

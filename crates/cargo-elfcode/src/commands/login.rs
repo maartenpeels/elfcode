@@ -28,6 +28,7 @@ pub fn execute(
 #[cfg(test)]
 mod tests {
     use camino::Utf8PathBuf;
+    use elfcode_core::PuzzleId;
     use tempfile::TempDir;
 
     use super::*;
@@ -44,6 +45,10 @@ mod tests {
             } else {
                 Err(SiteError::SessionRejected)
             }
+        }
+
+        fn input(&self, _session: &Session, _puzzle: PuzzleId) -> Result<String, SiteError> {
+            unreachable!("login downloads nothing")
         }
     }
 
