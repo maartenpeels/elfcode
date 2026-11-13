@@ -103,8 +103,10 @@ dependencies = [
  "etcetera",
  "jiff",
  "scraper",
+ "serde",
  "tempfile",
  "thiserror",
+ "toml",
  "ureq",
 ]
 

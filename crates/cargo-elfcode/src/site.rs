@@ -2,9 +2,10 @@
 
 use std::time::Duration;
 
-use elfcode_core::PuzzleId;
+use elfcode_core::{Part, PuzzleId};
 use thiserror::Error;
-use ureq::Agent;
+use ureq::http::Response;
+use ureq::{Agent, Body};
 
 use crate::session::Session;
 
@@ -37,6 +38,15 @@ pub trait Site {
     /// once part 1 is solved.
     fn puzzle_page(&self, session: Option<&Session>, puzzle: PuzzleId)
     -> Result<String, SiteError>;
+
+    /// Sends an answer and returns the response page as HTML.
+    fn submit(
+        &self,
+        session: &Session,
+        puzzle: PuzzleId,
+        part: Part,
+        answer: &str,
+    ) -> Result<String, SiteError>;
 }
 
 /// Where a puzzle's page is on the public site.
@@ -94,8 +104,26 @@ impl HttpSite {
         if let Some(session) = session {
             request = request.header("Cookie", session.cookie());
         }
-        let mut response = request.call()?;
+        let response = request.call()?;
+        Self::body(url, response)
+    }
 
+    fn post_form(
+        &self,
+        path: &str,
+        session: &Session,
+        form: &[(&str, &str)],
+    ) -> Result<String, SiteError> {
+        let url = format!("{}{path}", self.base_url);
+        let response = self
+            .agent
+            .post(&url)
+            .header("Cookie", session.cookie())
+            .send_form(form.iter().copied())?;
+        Self::body(url, response)
+    }
+
+    fn body(url: String, mut response: Response<Body>) -> Result<String, SiteError> {
         match response.status().as_u16() {
             // Observed on the live site: 400 "Please log in" without a
             // usable cookie, 500 for a session it does not know.
@@ -123,11 +151,23 @@ impl Site for HttpSite {
     ) -> Result<String, SiteError> {
         self.get(&puzzle_path(puzzle), session)
     }
+
+    fn submit(
+        &self,
+        session: &Session,
+        puzzle: PuzzleId,
+        part: Part,
+        answer: &str,
+    ) -> Result<String, SiteError> {
+        let level = part.to_string();
+        let form = [("level", level.as_str()), ("answer", answer)];
+        self.post_form(&format!("{}/answer", puzzle_path(puzzle)), session, &form)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::{BufRead, BufReader, Write};
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
     use std::thread::{self, JoinHandle};
 
@@ -136,19 +176,33 @@ mod tests {
     const TOKEN: &str = "53616c7465645f5f0123456789abcdef";
 
     /// Answers one request with `status` and `body`, and hands back the
-    /// request head.
+    /// request head followed by the request body.
     fn serve_once(status: &'static str, body: &'static str) -> (HttpSite, JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let site = HttpSite::at(format!("http://{}", listener.local_addr().unwrap()));
 
         let server = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let head: String = BufReader::new(&stream)
+            let mut reader = BufReader::new(&stream);
+            let head: String = reader
+                .by_ref()
                 .lines()
                 .map(Result::unwrap)
                 .take_while(|line| !line.is_empty())
                 .map(|line| line + "\n")
                 .collect();
+            let length = head
+                .lines()
+                .find_map(|line| {
+                    line.to_lowercase()
+                        .strip_prefix("content-length: ")?
+                        .parse()
+                        .ok()
+                })
+                .unwrap_or(0);
+            let mut request_body = vec![0; length];
+            reader.read_exact(&mut request_body).unwrap();
+            let head = head + &String::from_utf8(request_body).unwrap();
             write!(
                 stream,
                 "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -203,6 +257,24 @@ mod tests {
             assert!(request.starts_with("get /2026/day/3 "), "{request}");
             assert_eq!(request.contains("cookie:"), session.is_some(), "{request}");
         }
+    }
+
+    #[test]
+    fn submits_an_answer_as_a_form() {
+        let (site, server) = serve_once("200 OK", "<main><article>ok</article></main>");
+
+        let page = site
+            .submit(&session(), day_3_of_2026(), Part::Two, "a b&c")
+            .unwrap();
+
+        assert_eq!(page, "<main><article>ok</article></main>");
+        let request = server.join().unwrap();
+        assert!(request.starts_with("post /2026/day/3/answer "), "{request}");
+        assert!(
+            request.contains("content-type: application/x-www-form-urlencoded\n"),
+            "{request}"
+        );
+        assert!(request.ends_with("\nlevel=2&answer=a+b%26c"), "{request}");
     }
 
     #[test]

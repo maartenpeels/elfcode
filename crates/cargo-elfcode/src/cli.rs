@@ -83,6 +83,10 @@ pub struct RunArgs {
     #[arg(long, short)]
     pub part: Option<Part>,
 
+    /// Run only this part and submit its answer
+    #[arg(long, value_name = "PART", conflicts_with = "part")]
+    pub submit: Option<Part>,
+
     /// Build without optimizations; timings become unreliable
     #[arg(long)]
     pub debug: bool,
@@ -131,6 +135,14 @@ mod tests {
         assert_eq!(args.puzzle.year, Some(Year::new(2024).unwrap()));
         assert_eq!(args.part, Some(Part::Two));
         assert!(args.debug);
+    }
+
+    #[test]
+    fn submit_names_the_part_and_excludes_part() {
+        let args = run_args(&["3", "--submit", "2"]).unwrap();
+
+        assert_eq!(args.submit, Some(Part::Two));
+        assert!(run_args(&["3", "--submit", "2", "--part", "1"]).is_err());
     }
 
     #[test]

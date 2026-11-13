@@ -7,11 +7,22 @@ use jiff::tz::{self, TimeZone};
 /// needs no time zone database.
 const EST_OFFSET_HOURS: i8 = -5;
 
-/// Today's date where puzzles unlock.
-pub fn today() -> Date {
-    Timestamp::now()
-        .to_zoned(TimeZone::fixed(tz::offset(EST_OFFSET_HOURS)))
-        .date()
+fn eastern() -> TimeZone {
+    TimeZone::fixed(tz::offset(EST_OFFSET_HOURS))
+}
+
+/// The date of `moment` where puzzles unlock.
+pub fn eastern_date(moment: Timestamp) -> Date {
+    moment.to_zoned(eastern()).date()
+}
+
+/// Midday US Eastern on `date`, safely inside that day.
+#[cfg(test)]
+pub fn noon_on(date: Date) -> Timestamp {
+    date.at(12, 0, 0, 0)
+        .to_zoned(eastern())
+        .expect("a fixed offset has no gaps")
+        .timestamp()
 }
 
 /// The event to assume when no year is given: this year's once it has
@@ -50,6 +61,20 @@ mod tests {
             PuzzleId::new(Year::new(2026).unwrap(), elfcode_core::Day::new(3).unwrap()).unwrap();
 
         assert_eq!(unlock_date(puzzle), date(2026, 12, 3));
+    }
+
+    #[test]
+    fn the_date_changes_at_midnight_us_eastern() {
+        let utc = |hour| {
+            jiff::civil::date(2026, 12, 3)
+                .at(hour, 0, 0, 0)
+                .to_zoned(TimeZone::UTC)
+                .unwrap()
+                .timestamp()
+        };
+
+        assert_eq!(eastern_date(utc(4)), date(2026, 12, 2));
+        assert_eq!(eastern_date(utc(5)), date(2026, 12, 3));
     }
 
     #[test]

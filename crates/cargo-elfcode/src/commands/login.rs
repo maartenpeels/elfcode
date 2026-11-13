@@ -28,7 +28,7 @@ pub fn execute(
 #[cfg(test)]
 mod tests {
     use camino::Utf8PathBuf;
-    use elfcode_core::PuzzleId;
+    use elfcode_core::{Part, PuzzleId};
     use tempfile::TempDir;
 
     use super::*;
@@ -57,6 +57,16 @@ mod tests {
             _puzzle: PuzzleId,
         ) -> Result<String, SiteError> {
             unreachable!("login downloads nothing")
+        }
+
+        fn submit(
+            &self,
+            _session: &Session,
+            _puzzle: PuzzleId,
+            _part: Part,
+            _answer: &str,
+        ) -> Result<String, SiteError> {
+            unreachable!("login submits nothing")
         }
     }
 

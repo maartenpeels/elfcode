@@ -14,8 +14,10 @@ elfcode-core.workspace = true
 etcetera.workspace = true
 jiff.workspace = true
 scraper.workspace = true
+serde.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+toml.workspace = true
 ureq.workspace = true
 
 [lints]

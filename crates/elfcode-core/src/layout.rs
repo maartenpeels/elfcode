@@ -14,6 +14,7 @@ pub const DATA_DIR: &str = "data";
 pub const INPUT_FILE: &str = "input.txt";
 pub const PUZZLE_FILE: &str = "puzzle.md";
 pub const EXAMPLES_FILE: &str = "examples.toml";
+pub const SUBMISSIONS_FILE: &str = "submissions.toml";
 
 /// The file holding a day's solution, like `src/y2026/day03.rs`.
 #[must_use]
@@ -43,6 +44,13 @@ pub fn puzzle_file(puzzle: PuzzleId) -> Utf8PathBuf {
 #[must_use]
 pub fn examples_file(puzzle: PuzzleId) -> Utf8PathBuf {
     puzzle_dir(puzzle).join(EXAMPLES_FILE)
+}
+
+/// The log of answers sent to the site. Kept in version control: it holds
+/// the star status and the guardrail history, and no puzzle text.
+#[must_use]
+pub fn submissions_file(puzzle: PuzzleId) -> Utf8PathBuf {
+    puzzle_dir(puzzle).join(SUBMISSIONS_FILE)
 }
 
 /// The `.gitignore` patterns for a solutions crate.

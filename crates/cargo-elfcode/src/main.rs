@@ -15,10 +15,12 @@ mod puzzle_page;
 mod render;
 mod session;
 mod site;
+mod submission;
 
 use std::process::ExitCode;
 
 use clap::Parser;
+use jiff::Timestamp;
 
 use crate::cli::{Cargo, Command};
 use crate::data::PuzzleData;
@@ -50,10 +52,9 @@ fn dispatch(command: Command) -> anyhow::Result<()> {
             let project = Project::locate()?;
             let site = HttpSite::new();
             let sessions = SessionStore::for_user()?;
-            let today = event::today();
-            let data = PuzzleData::new(&project, &site, &sessions, today);
+            let data = PuzzleData::new(&project, &site, &sessions, Timestamp::now());
 
-            let output = commands::scaffold::execute(&args, &data, today)?;
+            let output = commands::scaffold::execute(&args, &data)?;
             print!("{output}");
         }
         Command::Run(args) => {
@@ -67,10 +68,9 @@ fn dispatch(command: Command) -> anyhow::Result<()> {
             let harness = CargoHarness::new(&project, profile);
             let site = HttpSite::new();
             let sessions = SessionStore::for_user()?;
-            let today = event::today();
-            let data = PuzzleData::new(&project, &site, &sessions, today);
+            let data = PuzzleData::new(&project, &site, &sessions, Timestamp::now());
 
-            let output = commands::run::execute(&args, &data, &harness, today)?;
+            let output = commands::run::execute(&args, &data, &harness)?;
             print!("{output}");
         }
     }

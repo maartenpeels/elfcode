@@ -1,7 +1,8 @@
 use std::{fs, io};
 
 use camino::{Utf8Path, Utf8PathBuf};
-use elfcode_core::{PuzzleId, layout};
+use elfcode_core::{Part, PuzzleId, layout};
+use jiff::Timestamp;
 use jiff::civil::Date;
 use thiserror::Error;
 
@@ -11,15 +12,16 @@ use crate::project::Project;
 use crate::puzzle_page::{self, NoDescription};
 use crate::session::{Session, SessionStore, StoreError};
 use crate::site::{self, Site, SiteError};
+use crate::submission::{History, HistoryError, Refusal, Response, UnrecognizedResponse};
 
-/// The puzzle files of a project, downloaded on first use and then served
-/// from disk forever: the site asks never to fetch the same thing twice.
+/// A project's puzzles as far as they come from the site: files downloaded
+/// on first use and then served from disk forever, as the site asks, and
+/// answers sent only after the local history allows it.
 pub struct PuzzleData<'a, S> {
     project: &'a Project,
     site: &'a S,
     sessions: &'a SessionStore,
-    /// US Eastern. Nothing is requested for a puzzle that has not unlocked.
-    today: Date,
+    now: Timestamp,
 }
 
 #[derive(Debug, Error)]
@@ -34,12 +36,18 @@ pub enum DataError {
         "{file} has not been downloaded yet and you are not logged in; run `cargo elfcode login <cookie>` first"
     )]
     NotLoggedIn { file: Utf8PathBuf },
+    #[error("submitting needs a login; run `cargo elfcode login <cookie>` first")]
+    NotLoggedInToSubmit,
     #[error(transparent)]
     Session(#[from] StoreError),
     #[error(transparent)]
     Site(#[from] SiteError),
     #[error(transparent)]
     NoDescription(#[from] NoDescription),
+    #[error(transparent)]
+    UnrecognizedResponse(#[from] UnrecognizedResponse),
+    #[error(transparent)]
+    History(#[from] HistoryError),
     #[error("could not write {path}")]
     Write {
         path: Utf8PathBuf,
@@ -47,13 +55,26 @@ pub enum DataError {
     },
 }
 
+/// What became of an answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Submitted {
+    /// Not sent: the history shows it cannot be right, or must wait.
+    Refused(Refusal),
+    Answered(Response),
+}
+
 impl<'a, S: Site> PuzzleData<'a, S> {
-    pub fn new(project: &'a Project, site: &'a S, sessions: &'a SessionStore, today: Date) -> Self {
+    pub fn new(
+        project: &'a Project,
+        site: &'a S,
+        sessions: &'a SessionStore,
+        now: Timestamp,
+    ) -> Self {
         Self {
             project,
             site,
             sessions,
-            today,
+            now,
         }
     }
 
@@ -61,11 +82,20 @@ impl<'a, S: Site> PuzzleData<'a, S> {
         self.project
     }
 
+    /// Today where puzzles unlock.
+    pub fn today(&self) -> Date {
+        event::eastern_date(self.now)
+    }
+
     /// The absolute path of the puzzle input, downloading it when it is not
     /// on disk yet. A cached input needs neither network nor login.
     pub fn input(&self, puzzle: PuzzleId) -> Result<Utf8PathBuf, DataError> {
         let file = layout::input_file(puzzle);
-        self.cached_or_download(puzzle, &file, |session| {
+        if self.project.path(&file).is_file() {
+            return Ok(self.project.path(file));
+        }
+
+        self.download(puzzle, &file, |session| {
             let session = session.ok_or_else(|| DataError::NotLoggedIn { file: file.clone() })?;
             Ok(self.site.input(&session, puzzle)?)
         })
@@ -75,25 +105,56 @@ impl<'a, S: Site> PuzzleData<'a, S> {
     /// it is not on disk yet. Without a login the site shows part 1 only.
     pub fn puzzle_text(&self, puzzle: PuzzleId) -> Result<Utf8PathBuf, DataError> {
         let file = layout::puzzle_file(puzzle);
-        self.cached_or_download(puzzle, &file, |session| {
+        if self.project.path(&file).is_file() {
+            return Ok(self.project.path(file));
+        }
+
+        self.refresh_puzzle_text(puzzle)
+    }
+
+    /// Downloads the puzzle text again, replacing the file only once the new
+    /// text is in hand. The one time refetching is right: after part 1 is
+    /// solved the page gains part 2.
+    pub fn refresh_puzzle_text(&self, puzzle: PuzzleId) -> Result<Utf8PathBuf, DataError> {
+        self.download(puzzle, &layout::puzzle_file(puzzle), |session| {
             let page = self.site.puzzle_page(session.as_ref(), puzzle)?;
             Ok(puzzle_page::to_markdown(&page, &site::puzzle_url(puzzle))?)
         })
     }
 
-    fn cached_or_download(
+    /// Sends an answer unless the history of the day rules it out, and
+    /// records what the site says.
+    pub fn submit(
+        &self,
+        puzzle: PuzzleId,
+        part: Part,
+        answer: &str,
+    ) -> Result<Submitted, DataError> {
+        let mut history = History::load(self.project, puzzle)?;
+        if let Err(refusal) = history.check(part, answer, self.now) {
+            return Ok(Submitted::Refused(refusal));
+        }
+
+        let session = self
+            .sessions
+            .load()?
+            .ok_or(DataError::NotLoggedInToSubmit)?;
+        let page = self.site.submit(&session, puzzle, part, answer)?;
+        let response = Response::parse(&page)?;
+
+        history.record(part, answer, self.now, response);
+        history.save(self.project, puzzle)?;
+        Ok(Submitted::Answered(response))
+    }
+
+    fn download(
         &self,
         puzzle: PuzzleId,
         file: &Utf8Path,
         download: impl FnOnce(Option<Session>) -> Result<String, DataError>,
     ) -> Result<Utf8PathBuf, DataError> {
-        let path = self.project.path(file);
-        if path.is_file() {
-            return Ok(path);
-        }
-
         let unlocks = event::unlock_date(puzzle);
-        if self.today < unlocks {
+        if self.today() < unlocks {
             return Err(DataError::NotUnlocked {
                 puzzle,
                 date: unlocks,
@@ -106,7 +167,7 @@ impl<'a, S: Site> PuzzleData<'a, S> {
                 path: file.to_owned(),
                 source,
             })?;
-        Ok(path)
+        Ok(self.project.path(file))
     }
 
     fn save(&self, file: &Utf8Path, contents: &str) -> io::Result<()> {
@@ -124,26 +185,31 @@ impl<'a, S: Site> PuzzleData<'a, S> {
 
 #[cfg(test)]
 pub mod testing {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
 
     use jiff::civil::date;
     use tempfile::TempDir;
 
     use super::*;
 
-    /// Serves the same input and puzzle page for every puzzle and counts
-    /// the downloads.
+    /// Serves the same input and puzzle page for every puzzle, answers
+    /// submissions with the page set in `answer_page`, and counts requests.
     #[derive(Default)]
     pub struct FakeSite {
         pub downloads: Cell<usize>,
         pub page_requests: Cell<usize>,
         pub page_sessions: Cell<usize>,
+        pub answer_page: Cell<&'static str>,
+        pub submitted: RefCell<Vec<(Part, String)>>,
     }
 
     impl FakeSite {
         pub const INPUT: &str = "a\nb\nc\n";
         pub const PAGE: &str =
             r#"<article class="day-desc"><h2>--- Day 3: Test ---</h2><p>Count.</p></article>"#;
+        pub const CORRECT: &str = "<main><article><p>That's the right answer!</p></article></main>";
+        pub const TOO_HIGH: &str = "<main><article><p>That's not the right answer; \
+            your answer is too high. Please wait one minute before trying again.</p></article></main>";
     }
 
     impl Site for FakeSite {
@@ -166,6 +232,17 @@ pub mod testing {
                 self.page_sessions.set(self.page_sessions.get() + 1);
             }
             Ok(Self::PAGE.to_owned())
+        }
+
+        fn submit(
+            &self,
+            _session: &Session,
+            _puzzle: PuzzleId,
+            part: Part,
+            answer: &str,
+        ) -> Result<String, SiteError> {
+            self.submitted.borrow_mut().push((part, answer.to_owned()));
+            Ok(self.answer_page.get().to_owned())
         }
     }
 
@@ -203,7 +280,11 @@ pub mod testing {
         }
 
         pub fn data_on(&self, today: Date) -> PuzzleData<'_, FakeSite> {
-            PuzzleData::new(&self.project, &self.site, &self.sessions, today)
+            self.data_at(event::noon_on(today))
+        }
+
+        pub fn data_at(&self, now: Timestamp) -> PuzzleData<'_, FakeSite> {
+            PuzzleData::new(&self.project, &self.site, &self.sessions, now)
         }
 
         pub fn write(&self, file: &str, contents: &str) {
@@ -337,6 +418,68 @@ mod tests {
         scratch.data().puzzle_text(puzzle()).unwrap();
 
         assert_eq!(scratch.site.page_requests.get(), 1);
+    }
+
+    #[test]
+    fn refreshing_replaces_the_puzzle_text() {
+        let scratch = Scratch::logged_in();
+        scratch.write("data/2026/03/puzzle.md", "part 1 only\n");
+
+        scratch.data().refresh_puzzle_text(puzzle()).unwrap();
+
+        assert!(
+            scratch
+                .read("data/2026/03/puzzle.md")
+                .contains("## --- Day 3: Test ---")
+        );
+    }
+
+    #[test]
+    fn records_what_the_site_says_to_an_answer() {
+        let scratch = Scratch::logged_in();
+        scratch.site.answer_page.set(FakeSite::TOO_HIGH);
+
+        let submitted = scratch.data().submit(puzzle(), Part::One, "100").unwrap();
+
+        assert!(matches!(
+            submitted,
+            Submitted::Answered(Response::Incorrect { .. })
+        ));
+        assert!(
+            scratch
+                .read("data/2026/03/submissions.toml")
+                .contains("answer = \"100\"\n")
+        );
+    }
+
+    #[test]
+    fn sends_nothing_the_history_rules_out() {
+        let scratch = Scratch::logged_in();
+        scratch.site.answer_page.set(FakeSite::TOO_HIGH);
+        scratch.data().submit(puzzle(), Part::One, "100").unwrap();
+
+        let an_hour_later =
+            event::noon_on(jiff::civil::date(2026, 12, 25)) + jiff::SignedDuration::from_hours(1);
+        let submitted = scratch
+            .data_at(an_hour_later)
+            .submit(puzzle(), Part::One, "120")
+            .unwrap();
+
+        assert!(matches!(
+            submitted,
+            Submitted::Refused(Refusal::OutOfBounds { .. })
+        ));
+        assert_eq!(scratch.site.submitted.borrow().len(), 1);
+    }
+
+    #[test]
+    fn submitting_needs_a_login() {
+        let scratch = Scratch::logged_out();
+
+        let error = scratch.data().submit(puzzle(), Part::One, "7").unwrap_err();
+
+        assert!(matches!(error, DataError::NotLoggedInToSubmit));
+        assert!(scratch.site.submitted.borrow().is_empty());
     }
 
     #[test]

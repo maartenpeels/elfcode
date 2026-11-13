@@ -4,7 +4,6 @@ use std::io::{self, Write};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use elfcode_core::{PuzzleId, layout};
-use jiff::civil::Date;
 use thiserror::Error;
 
 use crate::cli::{ResolveError, ScaffoldArgs};
@@ -40,9 +39,8 @@ enum Outcome {
 pub fn execute(
     args: &ScaffoldArgs,
     data: &PuzzleData<'_, impl Site>,
-    today: Date,
 ) -> Result<String, ScaffoldError> {
-    let puzzle = args.puzzle.resolve(today)?;
+    let puzzle = args.puzzle.resolve(data.today())?;
     let project = data.project();
 
     let source = layout::source_file(puzzle);
@@ -134,8 +132,6 @@ mod tests {
     use crate::cli::PuzzleArgs;
     use crate::data::testing::{FakeSite, Scratch};
 
-    const IN_DECEMBER_2026: Date = date(2026, 12, 25);
-
     fn args(day: u8, year: u16) -> ScaffoldArgs {
         ScaffoldArgs {
             puzzle: PuzzleArgs {
@@ -149,7 +145,7 @@ mod tests {
     fn creates_the_day_and_downloads_its_input() {
         let scratch = Scratch::logged_in();
 
-        let output = execute(&args(3, 2026), &scratch.data(), IN_DECEMBER_2026).unwrap();
+        let output = execute(&args(3, 2026), &scratch.data()).unwrap();
 
         assert_eq!(
             output,
@@ -191,7 +187,7 @@ mod tests {
         scratch.write("data/2026/03/puzzle.md", "my notes\n");
         scratch.write("data/2026/03/input.txt", "my input\n");
 
-        let output = execute(&args(3, 2026), &scratch.data(), IN_DECEMBER_2026).unwrap();
+        let output = execute(&args(3, 2026), &scratch.data()).unwrap();
 
         assert_eq!(output.matches("already there").count(), 4, "{output}");
         assert_eq!(scratch.read("src/y2026/day03.rs"), "// my solution\n");
@@ -207,12 +203,7 @@ mod tests {
     fn still_creates_the_files_when_the_input_cannot_be_downloaded() {
         let scratch = Scratch::logged_in();
 
-        let output = execute(
-            &args(3, 2026),
-            &scratch.data_on(date(2026, 12, 2)),
-            date(2026, 12, 2),
-        )
-        .unwrap();
+        let output = execute(&args(3, 2026), &scratch.data_on(date(2026, 12, 2))).unwrap();
 
         assert!(
             output.ends_with(
@@ -229,7 +220,7 @@ mod tests {
     fn says_why_it_did_not_download_when_logged_out() {
         let scratch = Scratch::logged_out();
 
-        let output = execute(&args(3, 2026), &scratch.data(), IN_DECEMBER_2026).unwrap();
+        let output = execute(&args(3, 2026), &scratch.data()).unwrap();
 
         assert!(output.contains("not downloaded: data/2026/03/input.txt has not been downloaded yet and you are not logged in"), "{output}");
     }
@@ -238,7 +229,7 @@ mod tests {
     fn refuses_a_day_the_event_does_not_have() {
         let scratch = Scratch::logged_in();
 
-        let error = execute(&args(13, 2025), &scratch.data(), IN_DECEMBER_2026).unwrap_err();
+        let error = execute(&args(13, 2025), &scratch.data()).unwrap_err();
 
         assert!(matches!(error, ScaffoldError::Puzzle(_)));
         assert!(!scratch.project.path("src").exists());

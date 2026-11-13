@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use elfcode_core::{DayOutcome, DayReport, Failure, FailureKind, Part, PartOutcome};
+use jiff::SignedDuration;
 
 const LABEL_WIDTH: usize = 9;
 const MIN_ANSWER_WIDTH: usize = 11;
@@ -45,7 +46,8 @@ pub fn day_report(report: &DayReport) -> String {
     format!("{title}\n{}", rows.concat())
 }
 
-fn row(label: &str, value: &str) -> String {
+/// One labelled line of output, aligned with the report.
+pub fn row(label: &str, value: &str) -> String {
     format!("{GAP}{label:<LABEL_WIDTH$}{GAP}{value}\n")
 }
 
@@ -65,6 +67,17 @@ fn describe(failure: &Failure) -> String {
         FailureKind::Panic => "panicked",
     };
     format!("{verb}: {}", failure.message)
+}
+
+/// A wait the site asks for, rounded up to whole seconds so that waiting
+/// the time shown is always enough.
+pub fn wait(wait: SignedDuration) -> String {
+    let seconds = wait.as_secs() + i64::from(wait.subsec_nanos() > 0);
+    match (seconds / 60, seconds % 60) {
+        (0, seconds) => format!("{seconds}s"),
+        (minutes, 0) => format!("{minutes}m"),
+        (minutes, seconds) => format!("{minutes}m {seconds}s"),
+    }
 }
 
 fn duration(duration: Duration) -> String {
@@ -96,6 +109,13 @@ mod tests {
             kind,
             message: message.to_owned(),
         }
+    }
+
+    #[test]
+    fn rounds_a_wait_up_to_whole_seconds() {
+        assert_eq!(wait(SignedDuration::from_secs(45)), "45s");
+        assert_eq!(wait(SignedDuration::from_mins(5)), "5m");
+        assert_eq!(wait(SignedDuration::from_millis(120_001)), "2m 1s");
     }
 
     #[test]
