@@ -1,6 +1,7 @@
 //! The line protocol between the CLI and the harness: one JSON object per
 //! line, each carrying the protocol version it was written with. The CLI
-//! sends a [`Request`], the harness answers with one [`DayReport`] per day.
+//! sends a [`Request`] on stdin, the harness answers with one [`DayReport`]
+//! per day in the file the request names.
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -151,6 +152,7 @@ mod tests {
     #[test]
     fn round_trips_a_request() {
         let requests = [Parts::Both, Parts::Only(Part::Two)].map(|parts| Request {
+            report_file: "/tmp/elfcode/reports.jsonl".into(),
             parts,
             days: vec![DayRequest {
                 puzzle: puzzle(2026, 3),

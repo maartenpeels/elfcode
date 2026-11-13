@@ -1,4 +1,4 @@
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::process::ExitCode;
 
@@ -12,8 +12,12 @@ const NOT_DRIVEN: &str = "\
 This binary is driven by `cargo elfcode`, which sends it a request on stdin.
 Use `cargo elfcode run <day>` instead of running it directly.";
 
-/// The whole `main` of a solutions crate: answers one request from
-/// `cargo elfcode` on stdin with one report per day on stdout.
+/// The whole `main` of a solutions crate: reads one request from
+/// `cargo elfcode` on stdin and appends one report per day to the file the
+/// request names.
+///
+/// Stdout and stderr are left to the solutions, so their debug output never
+/// mixes with the reports.
 #[must_use]
 pub fn serve(registry: &[Entry]) -> ExitCode {
     let stdin = io::stdin();
@@ -22,7 +26,7 @@ pub fn serve(registry: &[Entry]) -> ExitCode {
         return ExitCode::from(2);
     }
 
-    match respond(registry, stdin.lock(), io::stdout().lock()) {
+    match respond(registry, stdin.lock()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {:#}", anyhow::Error::from(error));
@@ -37,6 +41,11 @@ enum ServeError {
     ReadRequest(#[source] io::Error),
     #[error("could not understand the request")]
     DecodeRequest(#[from] DecodeError),
+    #[error("could not open report file {path}")]
+    OpenReportFile {
+        path: Utf8PathBuf,
+        source: io::Error,
+    },
     #[error("{} day {} has no solution in this crate", .0.year(), .0.day())]
     NotRegistered(PuzzleId),
     #[error("could not read input file {path}")]
@@ -48,16 +57,21 @@ enum ServeError {
     WriteReport(#[source] io::Error),
 }
 
-fn respond(
-    registry: &[Entry],
-    mut requests: impl BufRead,
-    mut reports: impl Write,
-) -> Result<(), ServeError> {
+fn respond(registry: &[Entry], mut requests: impl BufRead) -> Result<(), ServeError> {
     let mut line = String::new();
     requests
         .read_line(&mut line)
         .map_err(ServeError::ReadRequest)?;
     let request = Request::from_line(&line)?;
+
+    let mut reports = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&request.report_file)
+        .map_err(|source| ServeError::OpenReportFile {
+            path: request.report_file,
+            source,
+        })?;
 
     for day in request.days {
         let entry = registry
@@ -69,11 +83,13 @@ fn respond(
             source,
         })?;
 
-        let report = entry.run(&raw, request.parts);
+        let mut line = entry.run(&raw, request.parts).to_line();
+        line.push('\n');
 
-        // Flushed per day so the CLI can show progress while later days run.
-        writeln!(reports, "{}", report.to_line())
-            .and_then(|()| reports.flush())
+        // One unbuffered write per day, so a reader following the file sees
+        // whole lines as soon as each day finishes.
+        reports
+            .write_all(line.as_bytes())
             .map_err(ServeError::WriteReport)?;
     }
 
@@ -83,6 +99,7 @@ fn respond(
 #[cfg(test)]
 mod tests {
     use elfcode_core::{Day, DayOutcome, DayReport, DayRequest, PartOutcome, Parts, Year};
+    use tempfile::TempDir;
 
     use super::*;
     use crate::prelude::*;
@@ -112,45 +129,55 @@ mod tests {
         PuzzleId::new(Year::new(year).unwrap(), Day::new(day).unwrap()).unwrap()
     }
 
-    fn input_file(contents: &str) -> (tempfile::TempDir, Utf8PathBuf) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = Utf8PathBuf::from_path_buf(dir.path().join("input.txt")).unwrap();
-        fs::write(&path, contents).unwrap();
-        (dir, path)
-    }
+    /// A scratch directory holding a two-line `input.txt`.
+    struct Workspace(TempDir);
 
-    fn request_line(days: &[(PuzzleId, &Utf8PathBuf)]) -> String {
-        Request {
-            parts: Parts::Both,
-            days: days
-                .iter()
-                .map(|&(puzzle, input)| DayRequest {
-                    puzzle,
-                    input: input.clone(),
-                })
-                .collect(),
+    impl Workspace {
+        fn new() -> Self {
+            let workspace = Self(tempfile::tempdir().unwrap());
+            fs::write(workspace.path("input.txt"), "a\nb\n").unwrap();
+            workspace
         }
-        .to_line()
-    }
 
-    fn respond_to(line: &str) -> Result<Vec<DayReport>, ServeError> {
-        let mut output = Vec::new();
-        respond(REGISTRY, line.as_bytes(), &mut output)?;
+        fn path(&self, name: &str) -> Utf8PathBuf {
+            Utf8PathBuf::from_path_buf(self.0.path().join(name)).unwrap()
+        }
 
-        Ok(String::from_utf8(output)
-            .unwrap()
-            .lines()
-            .map(|line| DayReport::from_line(line).unwrap())
-            .collect())
+        fn request(&self, days: &[(PuzzleId, &str)]) -> String {
+            Request {
+                report_file: self.path("reports.jsonl"),
+                parts: Parts::Both,
+                days: days
+                    .iter()
+                    .map(|&(puzzle, input)| DayRequest {
+                        puzzle,
+                        input: self.path(input),
+                    })
+                    .collect(),
+            }
+            .to_line()
+        }
+
+        fn reports(&self) -> Vec<DayReport> {
+            fs::read_to_string(self.path("reports.jsonl"))
+                .unwrap()
+                .lines()
+                .map(|line| DayReport::from_line(line).unwrap())
+                .collect()
+        }
     }
 
     #[test]
-    fn answers_with_one_report_per_day_in_request_order() {
-        let (_dir, input) = input_file("a\nb\n");
-        let line = request_line(&[(puzzle(2026, 3), &input), (puzzle(2025, 12), &input)]);
+    fn appends_one_report_per_day_in_request_order() {
+        let workspace = Workspace::new();
+        let request = workspace.request(&[
+            (puzzle(2026, 3), "input.txt"),
+            (puzzle(2025, 12), "input.txt"),
+        ]);
 
-        let reports = respond_to(&line).unwrap();
+        respond(REGISTRY, request.as_bytes()).unwrap();
 
+        let reports = workspace.reports();
         let puzzles: Vec<_> = reports.iter().map(|report| report.puzzle).collect();
         assert_eq!(puzzles, [puzzle(2026, 3), puzzle(2025, 12)]);
         assert!(matches!(
@@ -164,32 +191,53 @@ mod tests {
     }
 
     #[test]
-    fn refuses_a_day_that_has_no_solution() {
-        let (_dir, input) = input_file("");
-        let line = request_line(&[(puzzle(2026, 4), &input)]);
+    fn keeps_the_reports_written_before_a_failing_day() {
+        let workspace = Workspace::new();
+        let request = workspace.request(&[
+            (puzzle(2026, 3), "input.txt"),
+            (puzzle(2026, 4), "input.txt"),
+        ]);
 
-        let error = respond_to(&line).unwrap_err();
+        let error = respond(REGISTRY, request.as_bytes()).unwrap_err();
 
         assert_eq!(
             error.to_string(),
             "2026 day 4 has no solution in this crate"
         );
+        assert_eq!(workspace.reports().len(), 1);
     }
 
     #[test]
     fn names_the_input_file_it_could_not_read() {
-        let (dir, _) = input_file("");
-        let missing = Utf8PathBuf::from_path_buf(dir.path().join("missing.txt")).unwrap();
-        let line = request_line(&[(puzzle(2026, 3), &missing)]);
+        let workspace = Workspace::new();
+        let request = workspace.request(&[(puzzle(2026, 3), "missing.txt")]);
 
-        let error = respond_to(&line).unwrap_err();
+        let error = respond(REGISTRY, request.as_bytes()).unwrap_err();
 
-        assert!(matches!(error, ServeError::ReadInput { path, .. } if path == missing));
+        assert!(matches!(
+            error,
+            ServeError::ReadInput { path, .. } if path == workspace.path("missing.txt")
+        ));
+    }
+
+    #[test]
+    fn names_the_report_file_it_could_not_open() {
+        let workspace = Workspace::new();
+        let request = Request {
+            report_file: workspace.path("no-such-dir/reports.jsonl"),
+            parts: Parts::Both,
+            days: Vec::new(),
+        }
+        .to_line();
+
+        let error = respond(REGISTRY, request.as_bytes()).unwrap_err();
+
+        assert!(matches!(error, ServeError::OpenReportFile { .. }));
     }
 
     #[test]
     fn refuses_a_request_it_cannot_decode() {
-        let error = respond_to("run day 3 please").unwrap_err();
+        let error = respond(REGISTRY, "run day 3 please".as_bytes()).unwrap_err();
 
         assert!(matches!(error, ServeError::DecodeRequest(_)));
     }
