@@ -1,0 +1,16 @@
+[package]
+name = "elfcode-build"
+description = "Build script support for elfcode: finds the day files and generates their registry"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+camino.workspace = true
+elfcode-core.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

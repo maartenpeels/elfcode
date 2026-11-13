@@ -1,0 +1,20 @@
+[package]
+name = "example-solutions"
+description = "A minimal solutions crate, used to test the framework end to end"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+elfcode.workspace = true
+
+[build-dependencies]
+elfcode-build.workspace = true
+
+[dev-dependencies]
+camino.workspace = true
+elfcode-core.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

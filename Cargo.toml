@@ -1,13 +1,16 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "examples/*"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
+elfcode = { path = "crates/elfcode" }
+elfcode-build = { path = "crates/elfcode-build" }
 elfcode-core = { path = "crates/elfcode-core" }
+
 anyhow = "1"
 camino = { version = "1", features = ["serde1"] }
 serde = { version = "1", features = ["derive"] }

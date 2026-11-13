@@ -19,6 +19,10 @@
 //!     }
 //! }
 //! ```
+//!
+//! A solutions crate puts each day in `src/y{YYYY}/day{DD}.rs`, calls
+//! `elfcode_build::generate()` from its build script, and has [`main!`] as
+//! its whole `src/main.rs`.
 
 mod answer;
 pub mod harness;
@@ -31,3 +35,19 @@ pub use answer::{Answer, Unsolved};
 pub use registry::Entry;
 pub use serve::serve;
 pub use solution::Solution;
+
+/// Declares the day modules that `elfcode-build` found and a `main` that
+/// serves them.
+///
+/// The modules land at the crate root, so a day is reachable as
+/// `crate::y2026::day03`.
+#[macro_export]
+macro_rules! main {
+    () => {
+        include!(concat!(env!("OUT_DIR"), "/elfcode.rs"));
+
+        fn main() -> ::std::process::ExitCode {
+            $crate::serve(REGISTRY)
+        }
+    };
+}
