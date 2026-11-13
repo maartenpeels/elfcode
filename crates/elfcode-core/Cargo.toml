@@ -3,6 +3,7 @@ name = "elfcode-core"
 description = "Domain types shared by the library, its build script support and the CLI"
 version.workspace = true
 edition.workspace = true
+repository.workspace = true
 
 [dependencies]
 camino.workspace = true

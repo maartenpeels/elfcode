@@ -3,6 +3,7 @@ name = "example-solutions"
 description = "A minimal solutions crate, used to test the framework end to end"
 version.workspace = true
 edition.workspace = true
+repository.workspace = true
 publish = false
 
 [dependencies]

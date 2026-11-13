@@ -10,6 +10,8 @@ mod event;
 mod harness;
 mod project;
 mod render;
+mod session;
+mod site;
 
 use std::process::ExitCode;
 
@@ -18,6 +20,8 @@ use clap::Parser;
 use crate::cli::{Cargo, Command};
 use crate::harness::{CargoHarness, Profile};
 use crate::project::Project;
+use crate::session::SessionStore;
+use crate::site::HttpSite;
 
 fn main() -> ExitCode {
     let Cargo::Elfcode(cli) = Cargo::parse();
@@ -33,6 +37,11 @@ fn main() -> ExitCode {
 
 fn dispatch(command: Command) -> anyhow::Result<()> {
     match command {
+        Command::Login(args) => {
+            let store = SessionStore::for_user()?;
+            let output = commands::login::execute(&args, &HttpSite::new(), &store)?;
+            print!("{output}");
+        }
         Command::Run(args) => {
             let project = Project::locate()?;
             let profile = if args.debug {
