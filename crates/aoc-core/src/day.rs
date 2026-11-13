@@ -2,13 +2,15 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// A puzzle day, 1 through 25.
 ///
 /// Whether the day exists in a particular event is checked by
 /// [`PuzzleId`](crate::PuzzleId), because that depends on the year.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "u8", into = "u8")]
 pub struct Day(u8);
 
 impl Day {
@@ -30,6 +32,12 @@ impl TryFrom<u8> for Day {
         } else {
             Err(InvalidDay(value))
         }
+    }
+}
+
+impl From<Day> for u8 {
+    fn from(value: Day) -> Self {
+        value.get()
     }
 }
 

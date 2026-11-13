@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{Day, Year};
 
 /// A day that exists in its event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "UncheckedPuzzleId")]
 pub struct PuzzleId {
     year: Year,
     day: Day,
@@ -29,6 +31,20 @@ impl PuzzleId {
     #[must_use]
     pub const fn day(self) -> Day {
         self.day
+    }
+}
+
+#[derive(Deserialize)]
+struct UncheckedPuzzleId {
+    year: Year,
+    day: Day,
+}
+
+impl TryFrom<UncheckedPuzzleId> for PuzzleId {
+    type Error = DayNotInEvent;
+
+    fn try_from(unchecked: UncheckedPuzzleId) -> Result<Self, Self::Error> {
+        Self::new(unchecked.year, unchecked.day)
     }
 }
 

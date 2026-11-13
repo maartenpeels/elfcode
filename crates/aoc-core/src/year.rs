@@ -2,13 +2,15 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// An Advent of Code event year.
 ///
 /// Only the lower bound is checked here. Whether a year has started yet
 /// depends on the clock, which this crate does not read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "u16", into = "u16")]
 pub struct Year(u16);
 
 impl Year {
@@ -41,6 +43,12 @@ impl TryFrom<u16> for Year {
         } else {
             Err(InvalidYear(value))
         }
+    }
+}
+
+impl From<Year> for u16 {
+    fn from(value: Year) -> Self {
+        value.get()
     }
 }
 

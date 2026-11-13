@@ -2,9 +2,11 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "u8", into = "u8")]
 pub enum Part {
     One,
     Two,
@@ -31,6 +33,12 @@ impl TryFrom<u8> for Part {
             2 => Ok(Self::Two),
             other => Err(InvalidPart(other)),
         }
+    }
+}
+
+impl From<Part> for u8 {
+    fn from(value: Part) -> Self {
+        value.number()
     }
 }
 
